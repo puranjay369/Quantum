@@ -1,33 +1,23 @@
 # Quantum Compiler — Implementation Guide
 
-> For Tarunpreet: everything Puranjay built in session 1, explained so you can pick up right where we left off.
-
----
-
-## What we built
-
-The compiler pipeline has two stages working end-to-end:
-
-```
-Source (.q file)  →  [Lexer]  →  Token stream  →  [Parser]  →  AST  →  printed to terminal
-```
+> For Tarunpreet: everything built in sessions 1 & 2, explained so you can pick up right where we left off.
 
 ---
 
 ## How to build and run
 
 ```bash
-g++ src/main.cpp src/lexer/lexer.cpp src/parser/parser.cpp -Isrc -std=c++17 -o qcc
+g++ src/main.cpp src/lexer/lexer.cpp src/parser/parser.cpp src/codegen/codegen.cpp -Isrc -std=c++17 -o qcc
 ./qcc examples/hello.q
+./output
 ```
 
-You should see a tree like:
+---
+
+## The full pipeline (all working)
+
 ```
-Program
-  FunctionDef: main
-    Block
-      VarDecl: x : int
-        IntLiteral: 5
+source.q  →  Lexer  →  tokens  →  Parser  →  AST  →  CodeGen  →  output.c  →  gcc  →  ./output
 ```
 
 ---
@@ -42,40 +32,28 @@ Program
 - `src/lexer/lexer.h` — class declaration
 - `src/lexer/lexer.cpp` — the implementation
 
-**How the lexer works:**
+**How it works:** the main loop in `tokenize()` skips whitespace and `//` comments, looks at the current character, decides what kind of token starts here, reads it, and repeats until EOF.
 
-The main loop in `tokenize()` is:
-1. Skip whitespace and `//` line comments
-2. Look at the current character
-3. Decide what kind of token starts here and read it
-4. Repeat until end of file
+Key methods: `peek()`, `peek2()` (for multi-char operators like `->`, `..`, `==`), `advance()`, `readNumber()`, `readString()`, `readIdentOrKeyword()`.
 
-Key methods:
-- `peek()` — look at current char without consuming it
-- `peek2()` — look one ahead (used to distinguish `->` from `-`, `..` from `.`, `==` from `=`)
-- `advance()` — consume and return current char, update line/col counters
-- `readNumber()` — reads int or float literals
-- `readString()` — reads `"..."` string literals
-- `readIdentOrKeyword()` — reads a word, then checks a lookup table to see if it's a keyword
-
-The `@` character is emitted as an `AT` token so `@Secure` gets parsed as `AT` + `IDENT("Secure")`.
+The `@` character is emitted as `AT` so `@Secure` becomes `AT` + `IDENT("Secure")`.
 
 ---
 
 ## Stage 2: Parser + AST
 
-**What it does:** consumes the token stream and builds an Abstract Syntax Tree — a tree of objects that represents the structure of the program.
+**What it does:** consumes the token stream and builds an Abstract Syntax Tree — a tree of objects representing the structure of the program.
 
 **Files:**
 - `src/parser/ast.h` — all AST node types as C++ structs
 - `src/parser/parser.h` — class declaration
 - `src/parser/parser.cpp` — the recursive-descent parser
 
-**AST nodes defined (in ast.h):**
+**AST nodes defined:**
 
 | Node | What it represents |
 |------|--------------------|
-| `ProgramNode` | the whole file — holds a list of functions |
+| `ProgramNode` | whole file — list of functions |
 | `FunctionDefNode` | `fn name(params) -> type { body }` |
 | `BlockNode` | `{ statements... }` |
 | `VarDeclNode` | `let x: int = 5;` |
@@ -88,65 +66,80 @@ The `@` character is emitted as an `AT` token so `@Secure` gets parsed as `AT` +
 | `IdentifierNode` | a variable name |
 | `FunctionCallNode` | `add(x, y)` |
 
-All nodes are heap-allocated via `unique_ptr<ASTNode>` (aliased as `NodePtr`). Memory is managed automatically.
+All nodes use `unique_ptr<ASTNode>` (aliased as `NodePtr`) — memory is automatic.
 
-**How the parser works — recursive descent:**
-
-Each grammar rule is a function that calls other functions. The call chain mirrors the grammar:
-
+**Expression precedence** is enforced by the call chain:
 ```
-parseProgram
-  └─ parseFunctionDef (one per fn in the file)
-       └─ parseBlock
-            └─ parseStatement (one per line)
-                 ├─ parseVarDecl      (if starts with let)
-                 ├─ parseReturnStmt   (if starts with return)
-                 ├─ parseIfStmt       (if starts with if)
-                 └─ parseExpression   (anything else)
-                      └─ parseComparison
-                           └─ parseAddSub
-                                └─ parseMulDiv
-                                     └─ parsePrimary
+parseExpression → parseComparison → parseAddSub → parseMulDiv → parsePrimary
 ```
+Deeper in the chain = tighter binding. `*` and `/` bind before `+` and `-`.
 
-The expression chain (`parseComparison` → `parseAddSub` → `parseMulDiv` → `parsePrimary`) is how operator precedence is enforced. `*` and `/` bind tighter than `+` and `-` because `parseMulDiv` is called deeper in the chain.
-
-**Helper methods in the parser:**
-- `check(type)` — is the current token of this type?
-- `match(type)` — if yes, consume it and return true
-- `expect(type, msg)` — consume it or throw an error with the line number
-- `advance()` — consume and return current token
-
-**Error handling:** the parser throws `std::runtime_error` with the line number whenever it hits something unexpected. This is basic but good enough for now — we will improve error messages in Phase 4.
+**Error handling:** throws `std::runtime_error` with the line number on bad syntax.
 
 ---
 
-## Stage 3: main.cpp
+## Stage 3: C Code Emitter (CodeGen)
 
-`main.cpp` wires everything together:
-1. Open and read the `.q` file
-2. Create a `Lexer`, call `tokenize()`
-3. Create a `Parser` with the token list, call `parse()` to get an AST
-4. Call `printAST()` to print the tree (for debugging)
+**What it does:** walks the AST and emits equivalent C code into `output.c`, then calls `gcc` to compile it into a runnable binary (`./output`).
 
-`printAST()` is a recursive function in `main.cpp` that walks the AST and prints each node with indentation.
+**Files:**
+- `src/codegen/codegen.h` — `CodeGen` class declaration
+- `src/codegen/codegen.cpp` — the implementation
+
+**How it works:** every AST node type has a corresponding `gen*` method:
+
+| Method | What it emits |
+|--------|--------------|
+| `genProgram()` | iterates over all functions |
+| `genFunction()` | C function signature + body |
+| `genBlock()` | `{` ... `}` with indentation tracking |
+| `genVarDecl()` | `int x = 5;` |
+| `genReturn()` | `return expr;` |
+| `genIf()` | `if (cond) { } else { }` |
+| `genExpr()` | recursively builds a C expression string |
+| `buildPrintf()` | maps `print(x)` → `printf("%d\n", x)` |
+| `mapType()` | `int→int`, `float→double`, `string→char*` |
+
+**Special cases:**
+- Quantum's `^` (power) maps to C's `pow()` — that's why `-lm` is in the gcc call
+- `print()` is not a real C function — `buildPrintf` converts it to `printf` with a format string
+- Format string heuristic: uses `%d` for int literals and identifiers, `%f` for floats, `%s` for strings. This is approximate until Phase 4 adds proper type tracking.
+
+**Output flow in `main.cpp`:**
+1. Lex → Parse → CodeGen → write `output.c`
+2. `system("gcc output.c -o output -lm")` compiles it
+3. Run `./output` to see results
 
 ---
 
-## What to build next: Phase 3 — C code emitter
+## Working test programs
 
-The next step is to create `src/codegen/codegen.cpp`. It walks the AST and emits C code into a `.c` file, then calls `gcc` on it to produce a real binary.
+**Test 1 — function call + arithmetic:**
+```
+fn multiply(a: int, b: int) -> int {
+    return a + b;
+}
+fn main() {
+    let x: int = 6;
+    let y: int = 7;
+    let result: int = multiply(x, y);
+    print(result);
+}
+```
+Expected output: `13`
 
-This means `./qcc examples/hello.q` will compile and actually run for the first time.
-
-Key things the emitter needs to handle first:
-- `fn main()` → `int main()`
-- `let x: int = 5;` → `int x = 5;`
-- `a + b`, `x == y` → same in C
-- `print(x)` → `printf("%d\n", x)` (or similar)
-- `return expr;` → `return expr;`
-
-Start with `src/codegen/codegen.h` and `src/codegen/codegen.cpp`, then wire it into `main.cpp`.
+**Test 2 — if/else:**
+```
+fn main() {
+    let age: int = 20;
+    if (age > 18) {
+        print(1);
+    } else {
+        print(0);
+    }
+}
+```
+Expected output: `1`
 
 ---
 
@@ -154,7 +147,7 @@ Start with `src/codegen/codegen.h` and `src/codegen/codegen.cpp`, then wire it i
 
 ```
 src/
-  main.cpp                  ← entry point, printAST lives here
+  main.cpp                  ← entry point; lex → parse → codegen → gcc
   lexer/
     token_types.h           ← TokenType enum
     token.h                 ← Token struct
@@ -164,6 +157,19 @@ src/
     ast.h                   ← all AST node structs
     parser.h                ← Parser class declaration
     parser.cpp              ← recursive-descent parser
+  codegen/
+    codegen.h               ← CodeGen class declaration
+    codegen.cpp             ← AST → C emitter
 examples/
   hello.q                   ← test file
 ```
+
+---
+
+## What to build next: Phase 4 — Type checker
+
+Create `src/semantic/symbol_table.h/.cpp` and `src/semantic/type_checker.h/.cpp`.
+
+The type checker runs between parsing and codegen. It walks the AST, builds a symbol table (variable name → type + scope), and catches errors like undeclared variables, type mismatches, and wrong argument counts.
+
+It also fixes the `buildPrintf` heuristic — once the type checker knows every variable's type, codegen can look it up and pick the right format string instead of guessing.
