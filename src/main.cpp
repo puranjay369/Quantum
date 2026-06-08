@@ -1,8 +1,10 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include <cstdlib>           // for system()
 #include "lexer/lexer.h"
 #include "parser/parser.h"
+#include "codegen/codegen.h"
 
 std::string tokenTypeName(TokenType t) {
     switch(t) {
@@ -118,7 +120,7 @@ int main(int argc, char* argv[]) {
 
     Parser parser(tokens);
     auto ast = parser.parse();
-    printAST(ast.get());
+    //printAST(ast.get());
 
 
     // for (auto& tok : tokens) {
@@ -126,6 +128,24 @@ int main(int argc, char* argv[]) {
     //               << "\"" << tok.value << "\""
     //               << " (line " << tok.line << ", col " << tok.col << ")\n";
     // }
+
+    // Generate C code
+    CodeGen codegen;
+    std::string cCode = codegen.generate(ast.get());
+
+    // Write .c file
+    std::ofstream cFile("output.c");
+    cFile << cCode;
+    cFile.close();
+
+    // Compile with gcc
+    int result = system("gcc output.c -o output -lm");
+    if (result != 0) {
+        std::cerr << "gcc compilation failed\n";
+        return 1;
+    }
+
+    std::cout << "Compiled successfully → ./output\n";
 
     return 0;
 }

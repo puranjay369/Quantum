@@ -128,14 +128,20 @@ Built in C++ using LLVM as the backend. The compiler (`qcc`) is modular — each
 
 ## Roadmap
 
-| Phase | Goal |
-|-------|------|
-| 1 | Lexer + tokeniser |
-| 2 | Parser + AST |
-| 3 | C code emitter (working end-to-end compiler) |
-| 4 | Type checker + semantic analysis |
-| 5 | `@Secure` enforcement + memory model |
-| 6 | Concurrency + LLVM backend + standard library |
+| Phase | Goal | Status |
+|-------|------|--------|
+| 1 | Lexer + tokeniser | ✅ Complete |
+| 2 | Parser + AST | ✅ Complete |
+| 3 | C code emitter (working end-to-end compiler) | ✅ Complete |
+| 4 | Type checker + semantic analysis | 🔲 Next |
+| 5 | `@Secure` enforcement + memory model | 🔲 Planned |
+| 6 | Concurrency + LLVM backend + standard library | 🔲 Planned |
+
+---
+
+## Current status
+
+The compiler is end-to-end working. A `.q` file containing functions, variables, arithmetic, if/else, and `print()` calls compiles to a native binary and runs correctly. The pipeline is: source → lex → parse → emit C → gcc → binary.
 
 ---
 

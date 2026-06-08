@@ -1,9 +1,10 @@
-fn add(a: int, b: int) -> int {
-    return a + b;
+fn multiply(a: int, b: int) -> int {
+    return a * b;
 }
 
 fn main() {
-    let x: int = 5;
-    let y: int = 10;
-    let result: int = add(x, y);
+    let x: int = 6;
+    let y: int = 7;
+    let result: int = multiply(x, y);
+    print(result);
 }

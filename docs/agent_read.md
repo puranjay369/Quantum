@@ -14,7 +14,7 @@
 
 ---
 
-## What has been built (as of session 1)
+## What has been built (as of session 2)
 
 ### Phase 1 — Lexer ✅ COMPLETE
 
@@ -49,18 +49,69 @@ Files written:
   - Expression chain: `parseExpression` → `parseComparison` → `parseAddSub` → `parseMulDiv` → `parsePrimary`
   - Handles `@Secure` annotation on functions
   - Throws `std::runtime_error` with line number on syntax errors
-
 - `src/main.cpp` — entry point: reads `.q` file → lexes → parses → calls `printAST()` to print the tree
 
 Milestone reached: `./qcc examples/hello.q` prints a correct AST tree. ✅
 
 ---
 
+### Phase 3 — C Code Emitter ✅ COMPLETE
+
+Files written:
+- `src/codegen/codegen.h` — `CodeGen` class declaration
+- `src/codegen/codegen.cpp` — walks the AST and emits valid C code:
+  - `generate()` — entry point, emits `#include` headers then calls `genProgram()`
+  - `genFunction()` — emits C function signature + body
+  - `genBlock()` — emits `{ ... }` with indentation
+  - `genVarDecl()` — emits `int x = 5;` style declarations
+  - `genReturn()` — emits `return expr;`
+  - `genIf()` — emits `if (cond) { } else { }`
+  - `genExpr()` — recursively emits expressions; maps `^` to `pow()`
+  - `buildPrintf()` — maps Quantum's `print()` to `printf()` with format string heuristic
+  - `mapType()` — maps Quantum types to C types: `int→int`, `float→double`, `string→char*`
+- `src/main.cpp` — updated: after parsing, calls `CodeGen::generate()`, writes `output.c`, shells out to `gcc -lm`, produces `./output` binary
+
+Known limitation: `buildPrintf` uses a heuristic for format strings (defaults to `%d` for identifiers). This gets fixed properly in Phase 4 when the type checker tracks variable types.
+
+Milestone reached: `./qcc examples/hello.q && ./output` compiles and runs Quantum code. ✅
+
+---
+
 ## Current build command
 
 ```bash
-g++ src/main.cpp src/lexer/lexer.cpp src/parser/parser.cpp -Isrc -std=c++17 -o qcc
+g++ src/main.cpp src/lexer/lexer.cpp src/parser/parser.cpp src/codegen/codegen.cpp -Isrc -std=c++17 -o qcc
 ./qcc examples/hello.q
+./output
+```
+
+---
+
+## Working example programs
+
+**Function call + arithmetic:**
+```
+fn multiply(a: int, b: int) -> int {
+    return a + b;
+}
+fn main() {
+    let x: int = 6;
+    let y: int = 7;
+    let result: int = multiply(x, y);
+    print(result);
+}
+```
+
+**If/else:**
+```
+fn main() {
+    let age: int = 20;
+    if (age > 18) {
+        print(1);
+    } else {
+        print(0);
+    }
+}
 ```
 
 ---
@@ -69,7 +120,6 @@ g++ src/main.cpp src/lexer/lexer.cpp src/parser/parser.cpp -Isrc -std=c++17 -o q
 
 | Phase | What | Status |
 |-------|------|--------|
-| 3 | C code emitter (AST → .c → gcc) | not started |
 | 4 | Type checker + symbol table | not started |
 | 5 | `@Secure` enforcement + memory model | not started |
 | 6 | Goroutines + channels + LLVM backend | not started |
@@ -78,10 +128,11 @@ g++ src/main.cpp src/lexer/lexer.cpp src/parser/parser.cpp -Isrc -std=c++17 -o q
 
 ## Key design decisions made
 
-- LLVM backend is deferred — Phase 3 will emit C and call `gcc`, swapping LLVM in at Phase 6
+- LLVM backend is deferred — Phase 3 emits C and calls `gcc`, swapping LLVM in at Phase 6
 - `@Secure` is already tokenised and parsed (`FunctionDefNode.isSecure = true`) but not enforced yet
 - No garbage collector — stack-first, manual heap in QF mode
 - Goroutine syntax (`go`, channels) is tokenised but not parsed yet
+- `output.c` and `./output` are intermediate build artifacts, not committed to repo
 
 ---
 
@@ -99,6 +150,9 @@ src/
     ast.h
     parser.h
     parser.cpp
+  codegen/
+    codegen.h
+    codegen.cpp
 examples/
   hello.q
 ```
@@ -107,7 +161,8 @@ examples/
 
 ## Next task for AI
 
-<!-- **Phase 3 — C code emitter.**
-Create `src/codegen/codegen.h` and `src/codegen/codegen.cpp`.
-Walk the AST and emit valid C into a `.c` file, then shell out to `gcc` to produce a binary.
-Start with: variable declarations, arithmetic, function definitions, `print()` mapped to `printf`. -->
+**Phase 4 — Type checker + semantic analysis.**
+Create `src/semantic/symbol_table.h`, `src/semantic/symbol_table.cpp`, `src/semantic/type_checker.h`, `src/semantic/type_checker.cpp`.
+Walk the AST after parsing, before codegen. Build a symbol table mapping variable names to types and scopes.
+Catch: undeclared variables, type mismatches in assignments, wrong argument counts, bad return types.
+Also fix `buildPrintf` in codegen to use the type checker's resolved types instead of the heuristic.
