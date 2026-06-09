@@ -4,7 +4,7 @@
 Parser::Parser(std::vector<Token> tokens) : tokens(std::move(tokens)) {}
 
 Token& Parser::peek()  { return tokens[pos]; }
-Token& Parser::peek2() { return tokens[std::min(pos+1, tokens.size()-1)]; }
+Token& Parser::peeknext() { return tokens[std::min(pos+1, tokens.size()-1)]; }
 bool   Parser::isAtEnd() { return peek().type == TokenType::EOF_TOKEN; }
 
 bool Parser::check(TokenType t) { return peek().type == t; }

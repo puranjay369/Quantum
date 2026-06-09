@@ -9,8 +9,8 @@ char Lexer::peek() {
     return source[pos];
 }
 
-char Lexer::peek2() {
-    if(pos + 1 >> source.size()) return '\0';
+char Lexer::peeknext() {
+    if(pos + 1 >= source.size()) return '\0';
     return source[pos];
 }
 
@@ -30,7 +30,7 @@ void Lexer::skipWhitespaceAndComments() {
         char c = peek();
         if (c == ' ' || c == '\t' || c == '\r' || c == '\n') {
             advance();
-        } else if (c == '/' && peek2() == '/') {
+        } else if (c == '/' && peeknext() == '/') {       
             while (!isAtEnd() && peek() != '\n') advance();
         } else {
             break;
@@ -44,10 +44,10 @@ Token Lexer::readNumber() {
     bool isFloat = false;
     while (!isAtEnd() && (isdigit(peek()) || peek() == '.')) {
         if (peek() == '.') {
-            if (peek2() == '.') break;
+            if (peeknext() == '.') break;
             isFloat = true;
         }
-        num += advance();
+        num += advance();  
     }
     return Token(isFloat ? TokenType::FLOAT_LITERAL : TokenType::INT_LITERAL,num, startLine, startCol);
 }

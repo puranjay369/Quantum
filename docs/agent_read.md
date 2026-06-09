@@ -22,7 +22,7 @@ Files written:
 - `src/lexer/token_types.h` — enum class `TokenType` covering all keywords, operators, literals, delimiters
 - `src/lexer/token.h` — `Token` struct: `{TokenType type, string value, int line, int col}`
 - `src/lexer/lexer.h` — `Lexer` class declaration
-- `src/lexer/lexer.cpp` — full implementation: `peek()`, `peek2()`, `advance()`, `skipWhitespaceAndComments()`, `readNumber()`, `readString()`, `readIdentOrKeyword()`, `tokenize()`
+- `src/lexer/lexer.cpp` — full implementation: `peek()`, `peeknext()`, `advance()`, `skipWhitespaceAndComments()`, `readNumber()`, `readString()`, `readIdentOrKeyword()`, `tokenize()`
 
 Key behaviours:
 - Handles `->` vs `-`, `..` vs `.`, `==` vs `=`, `!=`, `<=`, `>=`

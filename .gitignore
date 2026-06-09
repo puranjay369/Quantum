@@ -1,0 +1,27 @@
+# Build outputs
+qcc
+output
+output.c
+
+# CMake
+build/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+
+# VS Code
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# LLVM artifacts
+*.ll
+*.bc
+*.o
+*.obj
+
+# Logs
+*.log

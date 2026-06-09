@@ -5,6 +5,7 @@
 #include "lexer/lexer.h"
 #include "parser/parser.h"
 #include "codegen/codegen.h"
+#include "semantic/type_checker.h"
 
 std::string tokenTypeName(TokenType t) {
     switch(t) {
@@ -122,6 +123,9 @@ int main(int argc, char* argv[]) {
     auto ast = parser.parse();
     //printAST(ast.get());
 
+    // Run Semantic Analysis (Type Checking)
+    TypeChecker typeChecker;
+    typeChecker.check(ast.get());
 
     // for (auto& tok : tokens) {
     //     std::cout << "[" << tokenTypeName(tok.type) << "] "

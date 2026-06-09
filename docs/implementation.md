@@ -34,7 +34,7 @@ source.q  →  Lexer  →  tokens  →  Parser  →  AST  →  CodeGen  →  out
 
 **How it works:** the main loop in `tokenize()` skips whitespace and `//` comments, looks at the current character, decides what kind of token starts here, reads it, and repeats until EOF.
 
-Key methods: `peek()`, `peek2()` (for multi-char operators like `->`, `..`, `==`), `advance()`, `readNumber()`, `readString()`, `readIdentOrKeyword()`.
+Key methods: `peek()`, `peeknext()` (for multi-char operators like `->`, `..`, `==`), `advance()`, `readNumber()`, `readString()`, `readIdentOrKeyword()`.
 
 The `@` character is emitted as `AT` so `@Secure` becomes `AT` + `IDENT("Secure")`.
 
