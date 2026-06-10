@@ -93,10 +93,10 @@ NodePtr Parser::parseStatement() {
     if (check(TokenType::KW_LET))    return parseVarDecl();
     if (check(TokenType::KW_RETURN)) return parseReturnStmt();
     if (check(TokenType::KW_IF))     return parseIfStmt();
-    // expression statement (e.g. a function call)
-    auto expr = parseExpression();
-    expect(TokenType::SEMICOLON, ";");
-    return expr;
+    if (check(TokenType::KW_FOR))   return parseForStmt();
+    if (check(TokenType::KW_WHILE)) return parseWhileStmt();
+    
+    return parseAssignOrCall();
 }
 
 NodePtr Parser::parseVarDecl() {
@@ -135,6 +135,50 @@ NodePtr Parser::parseIfStmt() {
         node->elseBlock = parseBlock();
     }
     return node;
+}
+
+NodePtr Parser::parseForStmt() {
+    auto node = std::make_unique<ForStmtNode>();
+    node->kind = NodeType::ForStmt;
+    node->line = peek().line;
+    expect(TokenType::KW_FOR, "for");
+    node->varName = expect(TokenType::IDENT, "loop variable").value;
+    expect(TokenType::KW_IN, "in");
+    node->rangeStart = parsePrimary();
+    expect(TokenType::DOTDOT, "..");
+    node->rangeEnd = parsePrimary();
+    node->body = parseBlock();
+    return node;
+}
+
+NodePtr Parser::parseWhileStmt() {
+    auto node = std::make_unique<WhileStmtNode>();
+    node->kind = NodeType::WhileStmt;
+    node->line = peek().line;
+    expect(TokenType::KW_WHILE, "while");
+    expect(TokenType::LPAREN, "(");
+    node->condition = parseExpression();
+    expect(TokenType::RPAREN, ")");
+    node->body = parseBlock();
+    return node;
+}
+
+NodePtr Parser::parseAssignOrCall() {
+    // peek ahead — if IDENT followed by = it's assignment, if ( it's a call
+    if (check(TokenType::IDENT) && peeknext().type == TokenType::ASSIGN) {
+        auto node = std::make_unique<AssignStmtNode>();
+        node->kind = NodeType::AssignStmt;
+        node->line = peek().line;
+        node->name = advance().value; // consume IDENT
+        advance();                    // consume =
+        node->value = parseExpression();
+        expect(TokenType::SEMICOLON, ";");
+        return node;
+    }
+    // otherwise it's an expression statement (function call etc)
+    auto expr = parseExpression();
+    expect(TokenType::SEMICOLON, ";");
+    return expr;
 }
 
 // Expressions: precedence handled by calling chain

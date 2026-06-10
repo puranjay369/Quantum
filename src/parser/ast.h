@@ -6,6 +6,7 @@
 enum class NodeType {
     Program, FunctionDef, Block,
     VarDecl, ReturnStmt, IfStmt,
+    ForStmt, WhileStmt, AssignStmt, 
     BinOp, IntLiteral, FloatLiteral,
     StringLiteral, Identifier, FunctionCall
 };
@@ -32,6 +33,7 @@ struct StringLiteralNode : ASTNode {
 
 struct IdentifierNode : ASTNode {
     std::string name;
+    std::string resolvedType; //added
 };
 
 struct BinOpNode : ASTNode {
@@ -42,7 +44,8 @@ struct BinOpNode : ASTNode {
 
 struct VarDeclNode : ASTNode {
     std::string name;
-    std::string type;   
+    std::string type;
+    std::string resolvedType; //added   
     NodePtr initializer; 
 };
 
@@ -75,4 +78,22 @@ struct FunctionDefNode : ASTNode {
 
 struct ProgramNode : ASTNode {
     std::vector<NodePtr> functions;
+};
+
+struct ForStmtNode : ASTNode {
+    std::string varName;     // i
+    NodePtr rangeStart;      // 0
+    NodePtr rangeEnd;        // 10
+    NodePtr body;            // BlockNode
+    std::string resolvedType = "int"; // range vars are always int
+};
+
+struct WhileStmtNode : ASTNode {
+    NodePtr condition;
+    NodePtr body;
+};
+
+struct AssignStmtNode : ASTNode {
+    std::string name;
+    NodePtr value;
 };

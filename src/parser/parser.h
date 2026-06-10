@@ -31,6 +31,9 @@ private:
     NodePtr                          parseVarDecl();
     NodePtr                          parseReturnStmt();
     NodePtr                          parseIfStmt();
+    NodePtr                          parseForStmt();
+    NodePtr                          parseWhileStmt();
+    NodePtr                          parseAssignOrCall();
     
     // Expression precedence parsers (lowest to highest precedence)
     NodePtr                          parseExpression();

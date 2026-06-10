@@ -13,6 +13,13 @@ void CodeGen::emitRaw(const std::string& s) {
     out << s;
 }
 
+std::string CodeGen::generate(ProgramNode* program) {
+    out << "#include <stdio.h>\n";
+    out << "#include <math.h>\n\n";
+    genProgram(program);
+    return out.str();
+}
+
 std::string CodeGen::mapType(const std::string& qtype) {
     if (qtype == "int")    return "int";
     if (qtype == "float")  return "double";
@@ -20,14 +27,6 @@ std::string CodeGen::mapType(const std::string& qtype) {
     if (qtype == "bool")   return "int";
     if (qtype == "void")   return "void";
     return qtype; // user-defined struct names pass through
-}
-
-std::string CodeGen::generate(ProgramNode* program) {
-    // Standard C headers every Quantum program needs
-    out << "#include <stdio.h>\n";
-    out << "#include <math.h>\n\n";
-    genProgram(program);
-    return out.str();
 }
 
 void CodeGen::genProgram(ProgramNode* node) {
@@ -72,6 +71,15 @@ void CodeGen::genStatement(ASTNode* node) {
         case NodeType::IfStmt:
             genIf(static_cast<IfStmtNode*>(node));
             break;
+        case NodeType::ForStmt:
+            genFor(static_cast<ForStmtNode*>(node));
+            break;
+        case NodeType::WhileStmt:
+            genWhile(static_cast<WhileStmtNode*>(node));
+            break;
+        case NodeType::AssignStmt:
+            genAssign(static_cast<AssignStmtNode*>(node));
+            break;
         case NodeType::FunctionCall:
             emit(genExpr(node) + ";");
             break;
@@ -104,6 +112,27 @@ void CodeGen::genIf(IfStmtNode* node) {
         genBlock(static_cast<BlockNode*>(node->elseBlock.get()));
         indentLevel++;
     }
+}
+
+void CodeGen::genFor(ForStmtNode* node) {
+    std::string var   = node->varName;
+    std::string start = genExpr(node->rangeStart.get());
+    std::string end   = genExpr(node->rangeEnd.get());
+    emit("for (int " + var + " = " + start + "; " + var + " < " + end + "; " + var + "++) ");
+    indentLevel--;
+    genBlock(static_cast<BlockNode*>(node->body.get()));
+    indentLevel++;
+}
+
+void CodeGen::genWhile(WhileStmtNode* node) {
+    emit("while (" + genExpr(node->condition.get()) + ") ");
+    indentLevel--;
+    genBlock(static_cast<BlockNode*>(node->body.get()));
+    indentLevel++;
+}
+
+void CodeGen::genAssign(AssignStmtNode* node) {
+    emit(node->name + " = " + genExpr(node->value.get()) + ";");
 }
 
 std::string CodeGen::genExpr(ASTNode* node) {
@@ -156,20 +185,24 @@ std::string CodeGen::genExpr(ASTNode* node) {
 std::string CodeGen::buildPrintf(FunctionCallNode* node) {
     if (node->args.empty()) return "printf(\"\\n\")";
 
-    // Guess format specifier from the argument type
-    // (full type inference comes in Phase 4 — for now we use heuristics)
     auto* arg = node->args[0].get();
-    std::string fmt;
     std::string val = genExpr(arg);
+    std::string fmt;
 
-    if (arg->kind == NodeType::IntLiteral)
+    if (arg->kind == NodeType::IntLiteral) {
         fmt = "%d";
-    else if (arg->kind == NodeType::FloatLiteral)
+    } else if (arg->kind == NodeType::FloatLiteral) {
         fmt = "%f";
-    else if (arg->kind == NodeType::StringLiteral)
+    } else if (arg->kind == NodeType::StringLiteral) {
         fmt = "%s";
-    else
-        fmt = "%d"; // default to int for identifiers until type checker is in
+    } else if (arg->kind == NodeType::Identifier) {
+        std::string type = static_cast<IdentifierNode*>(arg)->resolvedType;
+        if (type == "float")       fmt = "%f";
+        else if (type == "string") fmt = "%s";
+        else                       fmt = "%d";
+    } else {
+        fmt = "%d";
+    }
 
     return "printf(\"" + fmt + "\\n\", " + val + ")";
 }

@@ -37,19 +37,17 @@ void TypeChecker::checkFunction(FunctionDefNode* node) {
         symTable.define(param.first, param.second);
     }
 
-    checkBlock(static_cast<BlockNode*>(node->body.get()));
+    checkBlock(static_cast<BlockNode*>(node->body.get()),false);
 
     symTable.exitScope();
 }
 
-void TypeChecker::checkBlock(BlockNode* node) {
-    // Note: If a Block is a function's main body, we could avoid double-scoping,
-    // but standard nested scoping (push/pop) hurts nothing and correctly sandboxes loops/ifs.
-    symTable.enterScope();
+void TypeChecker::checkBlock(BlockNode* node, bool createScope) {
+    if (createScope) symTable.enterScope();
     for (auto& stmt : node->statements) {
         checkStatement(stmt.get());
     }
-    symTable.exitScope();
+    if (createScope) symTable.exitScope();
 }
 
 void TypeChecker::checkStatement(ASTNode* node) {
@@ -62,6 +60,15 @@ void TypeChecker::checkStatement(ASTNode* node) {
             break;
         case NodeType::IfStmt:
             checkIf(static_cast<IfStmtNode*>(node));
+            break;
+        case NodeType::ForStmt:
+            checkFor(static_cast<ForStmtNode*>(node));
+            break;
+        case NodeType::WhileStmt:
+            checkWhile(static_cast<WhileStmtNode*>(node));
+            break;
+        case NodeType::AssignStmt:
+            checkAssign(static_cast<AssignStmtNode*>(node));
             break;
         case NodeType::FunctionCall: // standalone method execution
             checkExpr(node);         
@@ -80,6 +87,8 @@ void TypeChecker::checkVarDecl(VarDeclNode* node) {
         throw std::runtime_error("Type Error: Cannot assign type '" + exprType + 
                                  "' to variable '" + node->name + "' of type '" + node->type + "'.");
     }
+
+    node->resolvedType = node->type; //added
 
     // 3. Save it to our local scope
     symTable.define(node->name, node->type);
@@ -109,6 +118,36 @@ void TypeChecker::checkIf(IfStmtNode* node) {
     }
 }
 
+void TypeChecker::checkFor(ForStmtNode* node) {
+    symTable.enterScope();
+    symTable.define(node->varName, "int"); // loop var is always int
+    checkExpr(node->rangeStart.get());
+    checkExpr(node->rangeEnd.get());
+    checkBlock(static_cast<BlockNode*>(node->body.get()), false);
+    symTable.exitScope();
+}
+
+void TypeChecker::checkWhile(WhileStmtNode* node) {
+    std::string condType = checkExpr(node->condition.get());
+    if (condType != "bool" && condType != "int") {
+        throw std::runtime_error("Type Error: while condition must be bool or int, got '" + condType + "'.");
+    }
+    checkBlock(static_cast<BlockNode*>(node->body.get()));
+}
+
+void TypeChecker::checkAssign(AssignStmtNode* node) {
+    SymbolInfo info = symTable.lookup(node->name);
+    std::string exprType = checkExpr(node->value.get());
+    if (exprType != info.type) {
+        throw std::runtime_error("Type Error: Cannot assign '" + exprType +
+                                 "' to variable '" + node->name + "' of type '" + info.type + "'.");
+    }
+}
+
+std::string TypeChecker::getType(const std::string& name) {
+    return symTable.lookup(name).type;
+}
+
 std::string TypeChecker::checkExpr(ASTNode* node) {
     switch (node->kind) {
         case NodeType::IntLiteral:   return "int";
@@ -117,7 +156,9 @@ std::string TypeChecker::checkExpr(ASTNode* node) {
         
         case NodeType::Identifier: {
             auto* id = static_cast<IdentifierNode*>(node);
-            return symTable.lookup(id->name).type; // Ensures variable actually exists!
+            id->resolvedType = symTable.lookup(id->name).type; 
+            return id->resolvedType;
+            //return symTable.lookup(id->name).type; // Ensures variable actually exists!
         }
         case NodeType::BinOp:
             return checkBinOp(static_cast<BinOpNode*>(node));
