@@ -4,7 +4,7 @@
 
 ---
 
-## 1. 🧠 **Introduction**
+## 1. **Introduction**
 
 **Quantum** is a **modern systems programming language** designed to merge **speed, safety, and concurrency** — while giving developers the power to **choose between performance and security** on demand.
 
@@ -17,7 +17,7 @@ Quantum aims to make systems programming **as fast as C**, **as safe as Rust**, 
 
 ---
 
-## 2. ⚙️ **Core Philosophy**
+## 2.  **Core Philosophy**
 
 Quantum is built around 4 principles:
 
@@ -32,7 +32,7 @@ Quantum is built around 4 principles:
 
 ---
 
-## 3. 🧩 **Execution Modes**
+## 3.  **Execution Modes**
 
 Quantum introduces **dual compilation modes** for flexible trade-offs:
 
@@ -66,7 +66,7 @@ fn main() {
 
 ---
 
-## 4. 🧱 **Language Syntax Overview**
+## 4.  **Language Syntax Overview**
 
 Quantum's syntax resembles Rust + Go hybrid, designed to be simple yet expressive.
 
@@ -132,7 +132,7 @@ fn main() {
 
 ---
 
-## 5. 🧬 **Compiler Architecture**
+## 5.  **Compiler Architecture**
 
 The Quantum compiler (`qcc`) is built using **C++ + LLVM**.
 
@@ -156,7 +156,7 @@ Optimizer
 Binary Output (.out / .exe)
 ```
 
-### 🧩 Compiler Modules
+###  Compiler Modules
 
 | Module | Role |
 | --- | --- |
@@ -170,7 +170,7 @@ Binary Output (.out / .exe)
 
 ---
 
-## 6. 🧠 **Memory Model**
+## 6.  **Memory Model**
 
 Quantum uses a **stack-first, minimal heap** memory model.
 
@@ -200,7 +200,7 @@ Future versions can encrypt or sandbox these regions at runtime.
 
 ---
 
-## 7. 🔐 **Selective Security System (@Secure)**
+## 7.  **Selective Security System (@Secure)**
 
 Quantum's **@Secure** annotation introduces **compile-time verification** and **optional runtime isolation**.
 
@@ -221,7 +221,7 @@ Inside `@Secure` functions:
 
 ---
 
-## 8. ⚡ **Concurrency Model**
+## 8.  **Concurrency Model**
 
 Quantum uses **goroutine-like lightweight threads**:
 
@@ -255,7 +255,7 @@ fn main() {
 
 ---
 
-## 9. 🧮 **Optimization System**
+## 9.  **Optimization System**
 
 Quantum's optimizer is built on top of **LLVM's pass manager**.
 
@@ -273,7 +273,7 @@ Selective optimizations are applied:
 
 ---
 
-## 10. 📦 **Runtime Library**
+## 10.  **Runtime Library**
 
 Quantum includes a minimal runtime for:
 
@@ -294,7 +294,7 @@ runtime/
 
 ---
 
-## 11. 📚 **Standard Library**
+## 11.  **Standard Library**
 
 The standard library (`stdlib/`) will be written in Quantum itself.
 
@@ -308,7 +308,7 @@ Modules planned:
 
 ---
 
-## 12. 🧰 **Toolchain**
+## 12.  **Toolchain**
 
 Quantum ecosystem tools:
 
@@ -322,7 +322,7 @@ Quantum ecosystem tools:
 
 ---
 
-## 13. 🔭 **Future Roadmap**
+## 13.  **Future Roadmap**
 
 | Phase | Goal |
 | --- | --- |
@@ -335,7 +335,7 @@ Quantum ecosystem tools:
 
 ---
 
-## 14. 💡 **Philosophical Summary**
+## 14.  **Philosophical Summary**
 
 Quantum isn't just a compiler — it's a statement:
 
@@ -345,7 +345,7 @@ It bridges the gap between **safety** and **freedom**, giving power back to the 
 
 ---
 
-## 15. 🧭 **Final Vision**
+## 15.  **Final Vision**
 
 > Build a language that:
 > 
@@ -361,7 +361,7 @@ It's about **evolving** the way we think about performance and safety, not as op
 
 ---
 
-## 📁 **Project Structure**
+##  **Project Structure**
 
 ```
 Quantum/
@@ -489,7 +489,7 @@ Quantum/
 
 ---
 
-## 🚀 **Getting Started**
+##  **Getting Started**
 
 1. **Clone the repository:**
    ```bash
@@ -515,7 +515,7 @@ Quantum/
 
 ---
 
-## 🤝 **Contributing**
+##  **Contributing**
 
 We welcome contributions! Please see our roadmap in `docs/roadmap.md` for current priorities.
 
@@ -527,17 +527,14 @@ We welcome contributions! Please see our roadmap in `docs/roadmap.md` for curren
 
 ---
 
-## 📜 **License**
+##  **License**
 
 This project is licensed under the terms specified in the `LICENSE` file.
 
 ---
 
-## 📞 **Contact**
+##  **Contact**
 
-- **Puranjay**: [GitHub Profile]
-- **Tarunpreet**: [GitHub Profile]
+- [**Puranjay**](https://github.com/puranjay369)
+- [**Tarunpreet**](https://github.com/GodXSpell)
 
----
-
-*"The future of systems programming is quantum — neither purely safe nor purely fast, but both, when you need them."*

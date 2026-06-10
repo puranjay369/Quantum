@@ -17,7 +17,7 @@ g++ src/main.cpp src/lexer/lexer.cpp src/parser/parser.cpp src/codegen/codegen.c
 ## The full pipeline (all working)
 
 ```
-source.q  →  Lexer  →  tokens  →  Parser  →  AST  →  CodeGen  →  output.c  →  gcc  →  ./output
+source.q  →  Lexer  →  tokens  →  Parser  →  AST  →  TypeChecker  →  CodeGen  →  output.c  →  gcc  →  ./output
 ```
 
 ---

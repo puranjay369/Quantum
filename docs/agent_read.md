@@ -16,7 +16,7 @@
 
 ## What has been built (as of session 2)
 
-### Phase 1 — Lexer ✅ COMPLETE
+### Phase 1 — Lexer  { COMPLETE }
 
 Files written:
 - `src/lexer/token_types.h` — enum class `TokenType` covering all keywords, operators, literals, delimiters
@@ -30,11 +30,11 @@ Key behaviours:
 - Tracks line + col for every token
 - `@` is emitted as `AT` token (for `@Secure`)
 
-Milestone reached: `./qcc examples/hello.q` prints all tokens with line/col. ✅
+Milestone reached: `./qcc examples/hello.q` prints all tokens with line/col. 
 
 ---
 
-### Phase 2 — Parser + AST ✅ COMPLETE
+### Phase 2 — Parser + AST  { COMPLETE }
 
 Files written:
 - `src/parser/ast.h` — all AST node structs using `unique_ptr` ownership:
@@ -51,11 +51,11 @@ Files written:
   - Throws `std::runtime_error` with line number on syntax errors
 - `src/main.cpp` — entry point: reads `.q` file → lexes → parses → calls `printAST()` to print the tree
 
-Milestone reached: `./qcc examples/hello.q` prints a correct AST tree. ✅
+Milestone reached: `./qcc examples/hello.q` prints a correct AST tree. 
 
 ---
 
-### Phase 3 — C Code Emitter ✅ COMPLETE
+### Phase 3 — C Code Emitter  { COMPLETE }
 
 Files written:
 - `src/codegen/codegen.h` — `CodeGen` class declaration
@@ -71,16 +71,26 @@ Files written:
   - `mapType()` — maps Quantum types to C types: `int→int`, `float→double`, `string→char*`
 - `src/main.cpp` — updated: after parsing, calls `CodeGen::generate()`, writes `output.c`, shells out to `gcc -lm`, produces `./output` binary
 
-Known limitation: `buildPrintf` uses a heuristic for format strings (defaults to `%d` for identifiers). This gets fixed properly in Phase 4 when the type checker tracks variable types.
+Known limitation: `buildPrintf` currently defaults to `%d`/heuristics until we deeply bind the types resolved from Phase 4 directly to the AST nodes before running CodeGen.
 
-Milestone reached: `./qcc examples/hello.q && ./output` compiles and runs Quantum code. ✅
+Milestone reached: `./qcc examples/hello.q && ./output` compiles and runs Quantum code. 
+
+---
+
+### Phase 4 — Type Checker & Semantic Analysis { COMPLETE }
+
+Files written:
+- `src/semantic/symbol_table.h` & `symbol_table.cpp` — Stack of hash maps that handles local scopes logic (`enterScope`, `exitScope`).
+- `src/semantic/type_checker.h` & `type_checker.cpp` — Traverses the AST validating variables exist, expressions match logically (e.g. `int == int`), checks function signatures, and ensures `return` types match the declared function.
+
+Milestone reached: Semantic validation blocks compilation and throws descriptive errors before CodeGen if types are faulty. 
 
 ---
 
 ## Current build command
 
 ```bash
-g++ src/main.cpp src/lexer/lexer.cpp src/parser/parser.cpp src/codegen/codegen.cpp -Isrc -std=c++17 -o qcc
+g++ src/main.cpp src/lexer/lexer.cpp src/parser/parser.cpp src/semantic/symbol_table.cpp src/semantic/type_checker.cpp src/codegen/codegen.cpp -Isrc -std=c++17 -o qcc
 ./qcc examples/hello.q
 ./output
 ```
@@ -120,7 +130,6 @@ fn main() {
 
 | Phase | What | Status |
 |-------|------|--------|
-| 4 | Type checker + symbol table | not started |
 | 5 | `@Secure` enforcement + memory model | not started |
 | 6 | Goroutines + channels + LLVM backend | not started |
 
@@ -150,6 +159,11 @@ src/
     ast.h
     parser.h
     parser.cpp
+  semantic/
+    symbol_table.h
+    symbol_table.cpp
+    type_checker.h
+    type_checker.cpp
   codegen/
     codegen.h
     codegen.cpp
@@ -161,8 +175,5 @@ examples/
 
 ## Next task for AI
 
-**Phase 4 — Type checker + semantic analysis.**
-Create `src/semantic/symbol_table.h`, `src/semantic/symbol_table.cpp`, `src/semantic/type_checker.h`, `src/semantic/type_checker.cpp`.
-Walk the AST after parsing, before codegen. Build a symbol table mapping variable names to types and scopes.
-Catch: undeclared variables, type mismatches in assignments, wrong argument counts, bad return types.
-Also fix `buildPrintf` in codegen to use the type checker's resolved types instead of the heuristic.
+**Phase 5 — @Secure & Memory Model**
+Enforce memory rules on the AST. Validate the `@Secure` annotations, block raw pointer arithmetic manually, and implement strict ownership tracking inside of Secure functions.

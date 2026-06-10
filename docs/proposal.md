@@ -133,8 +133,8 @@ Built in C++ using LLVM as the backend. The compiler (`qcc`) is modular — each
 | 1 | Lexer + tokeniser | ✅ Complete |
 | 2 | Parser + AST | ✅ Complete |
 | 3 | C code emitter (working end-to-end compiler) | ✅ Complete |
-| 4 | Type checker + semantic analysis | 🔲 Next |
-| 5 | `@Secure` enforcement + memory model | 🔲 Planned |
+| 4 | Type checker + semantic analysis | ✅ Complete |
+| 5 | `@Secure` enforcement + memory model | 🔲 Next |
 | 6 | Concurrency + LLVM backend + standard library | 🔲 Planned |
 
 ---
