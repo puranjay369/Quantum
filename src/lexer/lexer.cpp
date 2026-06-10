@@ -11,7 +11,7 @@ char Lexer::peek() {
 
 char Lexer::peeknext() {
     if(pos + 1 >= source.size()) return '\0';
-    return source[pos];
+    return source[pos + 1];
 }
 
 char Lexer::advance() {
