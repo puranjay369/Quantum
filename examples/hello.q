@@ -1,7 +1,7 @@
 fn main() {
-    let x: int = 0;
-    while (x < 5) {
-        print("Hello");
-        x = x + 1;
-    }
+    let arr: heap<int> = heap_alloc(5);
+    arr[0] = 10;
+    arr[1] = 20;
+    print(arr[0]);
+    print(arr[1]);
 }

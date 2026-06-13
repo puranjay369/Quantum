@@ -15,6 +15,7 @@ void CodeGen::emitRaw(const std::string& s) {
 
 std::string CodeGen::generate(ProgramNode* program) {
     out << "#include <stdio.h>\n";
+    out << "#include <stdlib.h>\n";
     out << "#include <math.h>\n\n";
     genProgram(program);
     return out.str();
@@ -37,6 +38,7 @@ void CodeGen::genProgram(ProgramNode* node) {
 }
 
 void CodeGen::genFunction(FunctionDefNode* node) {
+    inSecureContext = node->isSecure;
     // Return type and name
     out << mapType(node->returnType) << " " << node->name << "(";
 
@@ -83,6 +85,9 @@ void CodeGen::genStatement(ASTNode* node) {
         case NodeType::FunctionCall:
             emit(genExpr(node) + ";");
             break;
+        case NodeType::FreeStmt:
+            genFree(static_cast<FreeStmtNode*>(node));
+            break;
         default:
             // expression statement (e.g. a bare expression)
             emit(genExpr(node) + ";");
@@ -90,9 +95,19 @@ void CodeGen::genStatement(ASTNode* node) {
 }
 
 void CodeGen::genVarDecl(VarDeclNode* node) {
-    std::string ctype = mapType(node->type);
-    std::string val   = genExpr(node->initializer.get());
-    emit(ctype + " " + node->name + " = " + val + ";");
+    if (node->type.substr(0, 5) == "heap<") {
+        std::string elemType = mapType(node->heapElementType);
+        std::string size = genExpr(node->initializer.get());
+        // check if inside @Secure — tag as secure_region
+        if (inSecureContext) {
+            emit("// secure_region");
+        }
+        emit(elemType + "* " + node->name + " = (" + elemType + "*)malloc(" + size + " * sizeof(" + elemType + "));");
+    } else {
+        std::string ctype = mapType(node->type);
+        std::string val = genExpr(node->initializer.get());
+        emit(ctype + " " + node->name + " = " + val + ";");
+    }
 }
 
 void CodeGen::genReturn(ReturnStmtNode* node) {
@@ -135,6 +150,10 @@ void CodeGen::genAssign(AssignStmtNode* node) {
     emit(node->name + " = " + genExpr(node->value.get()) + ";");
 }
 
+void CodeGen::genFree(FreeStmtNode* node) {
+    emit("free(" + node->varName + ");");
+}
+
 std::string CodeGen::genExpr(ASTNode* node) {
     switch (node->kind) {
 
@@ -175,6 +194,11 @@ std::string CodeGen::genExpr(ASTNode* node) {
             }
             return call + ")";
         }
+
+        case NodeType::IndexExpr: {
+            auto* n = static_cast<IndexExprNode*>(node);
+            return n->varName + "[" + genExpr(n->index.get()) + "]";
+}
 
         default:
             throw std::runtime_error("CodeGen: unknown expression node");

@@ -73,24 +73,29 @@ void TypeChecker::checkStatement(ASTNode* node) {
         case NodeType::FunctionCall: // standalone method execution
             checkExpr(node);         
             break;
+        case NodeType::FreeStmt:
+            checkFree(static_cast<FreeStmtNode*>(node));
+            break;
         default:
             checkExpr(node);
     }
 }
 
 void TypeChecker::checkVarDecl(VarDeclNode* node) {
-    // 1. Evaluate what the initializer code produces
     std::string exprType = checkExpr(node->initializer.get());
 
-    // 2. See if it matches the left side declared type
-    if (exprType != node->type) {
-        throw std::runtime_error("Type Error: Cannot assign type '" + exprType + 
-                                 "' to variable '" + node->name + "' of type '" + node->type + "'.");
+    // for heap types skip the strict equality check
+    if (node->type.substr(0, 5) != "heap<") {
+        if (exprType != node->type) {
+            throw std::runtime_error("Type Error: Cannot assign type '" + exprType +
+                                     "' to variable '" + node->name + "' of type '" + node->type + "'.");
+        }
+    } else {
+        node->heapElementType = node->type.substr(5, node->type.size() - 6);
+        memTracker.trackHeapVar(node->name);
     }
 
-    node->resolvedType = node->type; //added
-
-    // 3. Save it to our local scope
+    node->resolvedType = node->type;
     symTable.define(node->name, node->type);
 }
 
@@ -156,6 +161,7 @@ std::string TypeChecker::checkExpr(ASTNode* node) {
         
         case NodeType::Identifier: {
             auto* id = static_cast<IdentifierNode*>(node);
+            memTracker.checkNotFreed(id->name, id->line);
             id->resolvedType = symTable.lookup(id->name).type; 
             return id->resolvedType;
             //return symTable.lookup(id->name).type; // Ensures variable actually exists!
@@ -165,6 +171,12 @@ std::string TypeChecker::checkExpr(ASTNode* node) {
             
         case NodeType::FunctionCall:
             return checkFunctionCall(static_cast<FunctionCallNode*>(node));
+        
+        case NodeType::HeapAllocExpr:
+            return "heap<int>";
+        
+        case NodeType::IndexExpr:
+            return checkIndex(static_cast<IndexExprNode*>(node));
 
         default:
             throw std::runtime_error("Type Error: Unknown expression type.");
@@ -220,4 +232,27 @@ std::string TypeChecker::checkFunctionCall(FunctionCallNode* node) {
     }
 
     return info.type; // Returns the function's return type
+}
+
+void TypeChecker::checkFree(FreeStmtNode* node) {
+    SymbolInfo info = symTable.lookup(node->varName);
+    if (info.type.substr(0, 5) != "heap<") {
+        throw std::runtime_error(
+            "Memory Error: Cannot free non-heap variable '" + node->varName + "'."
+        );
+    }
+    memTracker.checkNotFreed(node->varName, node->line);
+    memTracker.markFreed(node->varName);
+}
+
+std::string TypeChecker::checkIndex(IndexExprNode* node) {
+    memTracker.checkNotFreed(node->varName, node->line);
+    SymbolInfo info = symTable.lookup(node->varName);
+    // extract T from heap<T>
+    if (info.type.substr(0, 5) == "heap<") {
+        std::string elemType = info.type.substr(5, info.type.size() - 6);
+        node->resolvedType = elemType;
+        return elemType;
+    }
+    throw std::runtime_error("Type Error: Cannot index non-heap variable '" + node->varName + "'.");
 }

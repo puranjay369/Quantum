@@ -51,15 +51,10 @@ void SecureChecker::checkStatement(ASTNode* node) {
 }
 
 void SecureChecker::checkVarDecl(VarDeclNode* node) {
-    // No heap allocations inside @Secure
-    if (node->initializer &&
-        node->initializer->kind == NodeType::Identifier) {
-        auto* ident = static_cast<IdentifierNode*>(node->initializer.get());
-        if (ident->name == "heap") {
-            reject("heap allocation is not allowed in @Secure functions", node->line);
-        }
+    if (node->type.substr(0, 5) == "heap<") {
+        reject("heap allocation is not allowed in @Secure functions", node->line);
     }
-    checkExpr(node->initializer.get());
+    if (node->initializer) checkExpr(node->initializer.get());
 }
 
 void SecureChecker::checkExpr(ASTNode* node) {
@@ -87,3 +82,5 @@ void SecureChecker::checkExpr(ASTNode* node) {
             break;
     }
 }
+
+
