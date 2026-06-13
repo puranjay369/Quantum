@@ -17,6 +17,8 @@ private:
 
     TypeChecker* typeChecker = nullptr;
 
+    bool inSecureContext = false;
+
     void emit(const std::string& s);    // Write a line with indentation
     void emitRaw(const std::string& s); // Write without newline (for expressions)
 
@@ -32,6 +34,7 @@ private:
     void genWhile(WhileStmtNode* node);
     void genAssign(AssignStmtNode* node);
     void genFunctionCall(FunctionCallNode* node);
+    void genFree(FreeStmtNode* node);
     
     std::string genExpr(ASTNode* node);              // Returns C expression as a string
     std::string buildPrintf(FunctionCallNode* node); // Converts print() -> printf()

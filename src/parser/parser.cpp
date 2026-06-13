@@ -93,8 +93,9 @@ NodePtr Parser::parseStatement() {
     if (check(TokenType::KW_LET))    return parseVarDecl();
     if (check(TokenType::KW_RETURN)) return parseReturnStmt();
     if (check(TokenType::KW_IF))     return parseIfStmt();
-    if (check(TokenType::KW_FOR))   return parseForStmt();
-    if (check(TokenType::KW_WHILE)) return parseWhileStmt();
+    if (check(TokenType::KW_FOR))    return parseForStmt();
+    if (check(TokenType::KW_WHILE))  return parseWhileStmt();
+    if (check(TokenType::KW_FREE))   return parseFreeStmt();
     
     return parseAssignOrCall();
 }
@@ -249,6 +250,9 @@ NodePtr Parser::parsePrimary() {
         node->value = advance().value;
         return node;
     }
+
+    if (check(TokenType::KW_HEAP_ALLOC)) return parseHeapAlloc();
+
     // Identifier or function call
     if (check(TokenType::IDENT)) {
         std::string name = advance().value;
@@ -262,6 +266,15 @@ NodePtr Parser::parsePrimary() {
             }
             expect(TokenType::RPAREN, ")");
             return node;
+        }
+        if (check(TokenType::LBRACKET)) {
+        advance(); // consume [
+        auto node = std::make_unique<IndexExprNode>();
+        node->kind = NodeType::IndexExpr;
+        node->varName = name;
+        node->index = parseExpression();
+        expect(TokenType::RBRACKET, "]");
+        return node;
         }
         auto node = std::make_unique<IdentifierNode>();
         node->kind = NodeType::Identifier;
@@ -279,10 +292,40 @@ NodePtr Parser::parsePrimary() {
 }
 
 std::string Parser::parseTypeName() {
+    if (check(TokenType::KW_HEAP)) {
+        advance(); // consume heap
+        expect(TokenType::LT, "<");
+        std::string inner = parseTypeName();
+        expect(TokenType::GT, ">");
+        return "heap<" + inner + ">";
+    }
     if (check(TokenType::TYPE_INT))    { advance(); return "int"; }
     if (check(TokenType::TYPE_FLOAT))  { advance(); return "float"; }
     if (check(TokenType::TYPE_STRING)) { advance(); return "string"; }
     if (check(TokenType::TYPE_BOOL))   { advance(); return "bool"; }
     if (check(TokenType::IDENT))       { return advance().value; }
     throw std::runtime_error("Expected type name, got '" + peek().value + "'");
+}
+
+NodePtr Parser::parseHeapAlloc() {
+    auto node = std::make_unique<HeapAllocExprNode>();
+    node->kind = NodeType::HeapAllocExpr;
+    node->line = peek().line;
+    expect(TokenType::KW_HEAP_ALLOC, "heap_alloc");
+    expect(TokenType::LPAREN, "(");
+    node->size = parseExpression();
+    expect(TokenType::RPAREN, ")");
+    return node;
+}
+
+NodePtr Parser::parseFreeStmt() {
+    auto node = std::make_unique<FreeStmtNode>();
+    node->kind = NodeType::FreeStmt;
+    node->line = peek().line;
+    expect(TokenType::KW_FREE, "free");
+    expect(TokenType::LPAREN, "(");
+    node->varName = expect(TokenType::IDENT, "variable name").value;
+    expect(TokenType::RPAREN, ")");
+    expect(TokenType::SEMICOLON, ";");
+    return node;
 }

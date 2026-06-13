@@ -1,6 +1,6 @@
 # Quantum Compiler — Implementation Guide
 
-> For Tarunpreet: everything built in sessions 1, 2 & 3, explained so you can pick up right where we left off.
+> For Tarunpreet: everything built in sessions 1–4, explained so you can pick up right where we left off.
 
 ---
 
@@ -10,6 +10,7 @@
 g++ src/main.cpp src/lexer/lexer.cpp src/parser/parser.cpp \
     src/semantic/symbol_table.cpp src/semantic/type_checker.cpp \
     src/security/secure_checker.cpp \
+    src/memory/memory_manager.cpp \
     src/codegen/codegen.cpp \
     -Isrc -std=c++17 -o qcc
 ./qcc examples/hello.q
@@ -18,7 +19,7 @@ g++ src/main.cpp src/lexer/lexer.cpp src/parser/parser.cpp \
 
 ---
 
-## The full pipeline (all working)
+## The full pipeline
 
 ```
 source.q → Lexer → tokens → Parser → AST → TypeChecker → SecureChecker → CodeGen → output.c → gcc → ./output
@@ -28,143 +29,153 @@ source.q → Lexer → tokens → Parser → AST → TypeChecker → SecureCheck
 
 ## Stage 1: Lexer
 
-**What it does:** reads the raw `.q` source file character by character and groups characters into tokens.
+**Files:** `src/lexer/token_types.h`, `token.h`, `lexer.h`, `lexer.cpp`
 
-**Files:**
-- `src/lexer/token_types.h` — the `TokenType` enum
-- `src/lexer/token.h` — `Token` struct: `{TokenType type, string value, int line, int col}`
-- `src/lexer/lexer.h` — class declaration
-- `src/lexer/lexer.cpp` — implementation
-
-**How it works:** the main loop in `tokenize()` skips whitespace and `//` comments, looks at the current character, decides what kind of token starts here, reads it, repeats until EOF.
+The main loop in `tokenize()` skips whitespace and `//` comments, reads the current character, decides what token starts here, reads it, repeats until EOF.
 
 Key methods: `peek()`, `peeknext()`, `advance()`, `readNumber()`, `readString()`, `readIdentOrKeyword()`.
 
-**Bug fixed this session:** `peeknext()` was returning `source[pos]` instead of `source[pos + 1]`. This broke float literals, `..` range operator, `->`, `==`, and every other multi-char token. Fix was one character change.
+**Bug fixed:** `peeknext()` was returning `source[pos]` instead of `source[pos + 1]` — broke float literals and every multi-char token (`->`, `..`, `==` etc).
 
-The `@` character is emitted as `AT` so `@Secure` becomes `AT` + `IDENT("Secure")`.
+`@Secure` becomes `AT` + `IDENT("Secure")` — `@` emitted as `AT` token.
+
+`heap_alloc` is registered as `KW_HEAP_ALLOC` in the keywords map.
 
 ---
 
 ## Stage 2: Parser + AST
 
-**What it does:** consumes the token stream and builds an Abstract Syntax Tree.
+**Files:** `src/parser/ast.h`, `parser.h`, `parser.cpp`
 
-**Files:**
-- `src/parser/ast.h` — all AST node types as C++ structs
-- `src/parser/parser.h` — class declaration
-- `src/parser/parser.cpp` — recursive-descent parser
-
-**AST nodes defined:**
+**All AST nodes:**
 
 | Node | What it represents |
 |------|--------------------|
-| `ProgramNode` | whole file — list of functions |
-| `FunctionDefNode` | `fn name(params) -> type { body }`, has `isSecure` flag |
+| `ProgramNode` | whole file |
+| `FunctionDefNode` | `fn name(params) -> type { }`, has `isSecure` bool |
 | `BlockNode` | `{ statements... }` |
-| `VarDeclNode` | `let x: int = 5;`, has `resolvedType` set by type checker |
+| `VarDeclNode` | `let x: int = 5;`, has `resolvedType` and `heapElementType` |
 | `ReturnStmtNode` | `return expr;` |
 | `IfStmtNode` | `if (cond) { } else { }` |
-| `ForStmtNode` | `for i in 0..10 { }` — has `varName`, `rangeStart`, `rangeEnd`, `body` |
-| `WhileStmtNode` | `while (cond) { }` — has `condition`, `body` |
-| `AssignStmtNode` | `x = expr;` — has `name`, `value` |
-| `BinOpNode` | `a + b`, `x == y`, etc. |
+| `ForStmtNode` | `for i in 0..10 { }` |
+| `WhileStmtNode` | `while (cond) { }` |
+| `AssignStmtNode` | `x = expr;` |
+| `HeapAllocExprNode` | `heap_alloc(n)`, has `elementType` and `size` |
+| `FreeStmtNode` | `free(varName)` |
+| `IndexExprNode` | `arr[i]`, has `resolvedType` |
+| `BinOpNode` | `a + b`, `x == y` etc |
 | `IntLiteralNode` | `42` |
 | `FloatLiteralNode` | `3.14` |
 | `StringLiteralNode` | `"hello"` |
-| `IdentifierNode` | variable name, has `resolvedType` set by type checker |
+| `IdentifierNode` | variable name, has `resolvedType` |
 | `FunctionCallNode` | `add(x, y)` |
 
-All nodes use `unique_ptr<ASTNode>` aliased as `NodePtr`.
+**`parseTypeName()`** — handles `heap<T>`, returns the string `"heap<int>"` etc.
+
+**`parseAssignOrCall()`** — default statement handler:
+- `IDENT [` → index assignment (NOT YET IMPLEMENTED — deferred)
+- `IDENT =` → plain assignment
+- anything else → expression statement
 
 **Expression precedence chain:**
 ```
 parseExpression → parseComparison → parseAddSub → parseMulDiv → parsePrimary
 ```
 
-**`parseAssignOrCall()`** — the default statement handler. Peeks ahead: if `IDENT =` it's an assignment, if `IDENT (` it's a function call.
-
-**Error handling:** throws `std::runtime_error` with line number on bad syntax.
-
 ---
 
 ## Stage 3: Type Checker
 
-**What it does:** walks the AST after parsing, validates types and scopes, and annotates AST nodes with resolved types so codegen doesn't have to guess.
+**Files:** `src/semantic/symbol_table.h`, `symbol_table.cpp`, `type_checker.h`, `type_checker.cpp`
 
-**Files:**
-- `src/semantic/symbol_table.h` / `symbol_table.cpp` — stack of hash maps
-  - `enterScope()` / `exitScope()` — push/pop scope
-  - `define(name, type, isFunction, paramTypes)` — register symbol
-  - `lookup(name)` — search from innermost scope outward, throws if not found
-  - `isDefinedInCurrentScope(name)` — prevents redefinition in same scope
-- `src/semantic/type_checker.h` / `type_checker.cpp` — AST traversal
+**Symbol table:** stack of hash maps. `lookup()` searches from innermost scope outward, throws if not found. `SymbolInfo` has `{type, isFunction, paramTypes}`.
+
+**Critical scoping fix:** `checkBlock(bool createScope = true)` — called with `false` from `checkFunction()` to avoid double-scoping the function body.
+
+**How resolved types flow to codegen:** type checker writes `resolvedType` directly onto `IdentifierNode` and `VarDeclNode` during traversal. Codegen reads from the node — never queries the symbol table (scopes are gone by then).
 
 **Key methods:**
 
 | Method | What it does |
 |--------|-------------|
-| `checkFunction()` | enters scope, registers params, calls `checkBlock(false)` |
-| `checkBlock(createScope)` | iterates statements; `false` skips double-scoping |
-| `checkVarDecl()` | validates initializer type matches declared type, sets `node->resolvedType` |
-| `checkAssign()` | looks up variable type, validates RHS matches |
-| `checkFor()` | enters scope, defines loop var as `int`, checks range + body |
+| `checkVarDecl()` | validates type match; detects `heap<T>`, sets `heapElementType`, tracks heap var |
+| `checkAssign()` | looks up var type, validates RHS matches |
+| `checkFor()` | enters scope, defines loop var as `int` |
 | `checkWhile()` | validates condition is `bool` or `int` |
-| `checkIf()` | validates condition, checks both branches |
-| `checkExpr()` | returns resolved type; sets `id->resolvedType` on `IdentifierNode` |
+| `checkFree()` | validates var is heap type, checks not already freed, marks freed |
+| `checkIndex()` | checks use-after-free, extracts element type from `heap<T>` |
+| `checkExpr()` | returns resolved type, sets `resolvedType` on identifier nodes, checks use-after-free |
 | `checkBinOp()` | enforces type match; comparison ops return `"bool"` |
 | `checkFunctionCall()` | validates callee exists, arg count, arg types |
-| `getType(name)` | public lookup — only valid while scopes are active |
-
-**Critical bug fixed:** `checkBlock()` was always calling `enterScope()`/`exitScope()`, but `checkFunction()` also did — causing double scoping. Variables defined inside a function were going into an inner scope that got popped before `print(result)` ran. Fix: `checkBlock(bool createScope = true)`, called with `false` from `checkFunction()`.
-
-**How resolved types flow to codegen:** instead of querying the symbol table at codegen time (scopes are gone by then), the type checker writes `resolvedType` directly onto `IdentifierNode` and `VarDeclNode` during traversal. Codegen reads it from there.
 
 ---
 
-## Stage 4: Security Checker
+## Stage 4: Memory Tracker
 
-**What it does:** runs after the type checker, before codegen. Walks only `@Secure` functions and rejects unsafe operations.
+**Files:** `src/memory/memory_manager.h`, `memory_manager.cpp`
 
-**Files:**
-- `src/security/secure_checker.h` / `secure_checker.cpp`
+Tracks which variables are heap-allocated and which have been freed. Used by the type checker during AST traversal.
 
-**Rules enforced inside `@Secure` functions:**
-- No `free()` calls
-- No `heap` allocations
+| Method | What it does |
+|--------|-------------|
+| `trackHeapVar(name)` | registers a variable as heap-allocated |
+| `markFreed(name)` | marks a variable as freed |
+| `isHeap(name)` | returns true if heap-allocated |
+| `checkNotFreed(name, line)` | throws `Memory Error` if variable was already freed |
 
-**Error format:** `@Secure violation at line N: <reason>`
-
-Only functions with `FunctionDefNode.isSecure = true` are checked. Regular functions are skipped entirely.
+The type checker holds a `MemoryTracker memTracker` instance and calls these during `checkVarDecl`, `checkFree`, `checkIndex`, and `checkExpr` (identifier case).
 
 ---
 
-## Stage 5: CodeGen
+## Stage 5: Security Checker
 
-**What it does:** walks the AST and emits valid C into `output.c`, then shells out to `gcc` to produce `./output`.
+**Files:** `src/security/secure_checker.h`, `secure_checker.cpp`
 
-**Files:**
-- `src/codegen/codegen.h` / `codegen.cpp`
+Runs after type checker, before codegen. Only enforces rules inside `@Secure` functions.
+
+Rules:
+- Rejects `free()` calls — checks `FunctionCallNode.callee == "free"`
+- Rejects `heap<T>` allocations — checks `node->type.substr(0,5) == "heap<"`
+
+Error format: `@Secure violation at line N: <reason>`
+
+---
+
+## Stage 6: CodeGen
+
+**Files:** `src/codegen/codegen.h`, `codegen.cpp`
 
 **Gen methods:**
 
 | Method | What it emits |
 |--------|--------------|
-| `genFunction()` | C function signature + body |
+| `genFunction()` | C function signature + body, sets `inSecureContext` |
 | `genBlock()` | `{` ... `}` with indentation |
-| `genVarDecl()` | `int x = 5;` |
+| `genVarDecl()` | stack: `int x = 5;` / heap: `int* arr = (int*)malloc(n * sizeof(int));` |
 | `genReturn()` | `return expr;` |
 | `genIf()` | `if (cond) { } else { }` |
 | `genFor()` | `for (int i = start; i < end; i++)` |
 | `genWhile()` | `while (cond)` |
 | `genAssign()` | `x = expr;` |
-| `genExpr()` | recursively builds C expression string |
-| `buildPrintf()` | maps `print(x)` → correct `printf` format string |
-| `mapType()` | `int→int`, `float→double`, `string→char*` |
+| `genFree()` | `free(varName);` |
+| `genExpr()` | recursive C expression; `^` → `pow()`; `arr[i]` → `varName[index]` |
+| `buildPrintf()` | reads `resolvedType` from `IdentifierNode` for correct `%d`/`%f`/`%s` |
+| `mapType()` | `int→int`, `float→double`, `string→char*`, `heap<T>→T*` |
 
-**`buildPrintf()` fix:** no longer uses heuristics. Reads `resolvedType` from `IdentifierNode` directly — set by the type checker during traversal. Picks `%d`, `%f`, or `%s` correctly for any variable type.
+`inSecureContext` bool — set in `genFunction()` based on `isSecure`. Heap allocs inside `@Secure` get a `// secure_region` comment in output.
 
-**Special:** Quantum's `^` maps to `pow()` — that's why `-lm` is in the gcc call.
+Headers emitted: `stdio.h`, `stdlib.h` (for malloc/free), `math.h` (for pow).
+
+---
+
+## Known limitations / deferred to post-Phase 6
+
+- `arr[i] = value` index assignment not implemented (`IndexAssignNode` missing)
+- Full array support deferred
+- Stack allocator (`stack_alloc`) not implemented
+- No runtime encryption of `secure_region` memory
+- Full ownership/borrow-checker style tracking deferred
+- Structs and `impl` blocks not implemented
 
 ---
 
@@ -183,31 +194,18 @@ fn main() {
 }
 ```
 
-**If/else:**
-```
-fn main() {
-    let age: int = 20;
-    if (age > 18) { print(1); } else { print(0); }
-}
-```
-
 **For loop:**
 ```
 fn main() {
-    for i in 0..5 {
-        print(i);
-    }
+    for i in 0..5 { print(i); }
 }
 ```
 
-**While loop + assignment:**
+**While loop:**
 ```
 fn main() {
     let x: int = 0;
-    while (x < 5) {
-        print(x);
-        x = x + 1;
-    }
+    while (x < 5) { print(x); x = x + 1; }
 }
 ```
 
@@ -216,27 +214,33 @@ fn main() {
 fn main() {
     let x: float = 3.14;
     let name: string = "Puranjay";
-    let age: int = 20;
     print(x);
     print(name);
-    print(age);
+}
+```
+
+**Heap alloc:**
+```
+fn main() {
+    let arr: heap<int> = heap_alloc(5);
+    free(arr);
 }
 ```
 
 ---
 
-## Project file structure
+## File structure
 
 ```
 src/
-  main.cpp                    ← lex → parse → typecheck → securecheck → codegen → gcc
+  main.cpp
   lexer/
     token_types.h
     token.h
     lexer.h
     lexer.cpp
   parser/
-    ast.h                     ← all AST node structs (includes resolvedType fields)
+    ast.h
     parser.h
     parser.cpp
   semantic/
@@ -247,6 +251,9 @@ src/
   security/
     secure_checker.h
     secure_checker.cpp
+  memory/
+    memory_manager.h
+    memory_manager.cpp
   codegen/
     codegen.h
     codegen.cpp
@@ -256,10 +263,21 @@ examples/
 
 ---
 
-## What to build next: Phase 6 — Goroutines + LLVM
+## What to build next: Phase 6 — Goroutines + Channels + LLVM
 
-- Parse `go funcName(args)` — spawns a goroutine
-- Parse `chan<T>` type, `.send()`, `.recv()` methods
-- Add `wait_all()` built-in
-- Implement goroutines as pthreads first, then swap to LLVM IR later
-- Swap C emitter for real LLVM IR generation
+**Step 1 — Goroutines via pthreads:**
+- Add `GoStmtNode` to AST: `go funcName(args)`
+- Parser: `parseGoStmt()` on `KW_GO` token
+- Type checker: validate function exists and arg types match
+- CodeGen: emit `pthread_create(...)`, track thread ids, `wait_all()` → `pthread_join` on all
+
+**Step 2 — Channels:**
+- `chan<int> numbers;` — typed channel declaration
+- `numbers.send(x)` and `numbers.recv()`
+- Implement as thread-safe queue in C (mutex + condition variable)
+
+**Step 3 — LLVM backend:**
+- Replace `system("gcc output.c ...")` with LLVM IR generation via LLVM C++ API
+- Emit IR from AST nodes directly
+- Hook up LLVM optimiser passes (O1–O3)
+- Add `-lLLVM` to build command

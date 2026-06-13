@@ -8,6 +8,7 @@ enum class NodeType {
     VarDecl, ReturnStmt, IfStmt,
     ForStmt, WhileStmt, AssignStmt, 
     BinOp, IntLiteral, FloatLiteral,
+    HeapAllocExpr,FreeStmt,IndexExpr,
     StringLiteral, Identifier, FunctionCall
 };
 
@@ -45,7 +46,8 @@ struct BinOpNode : ASTNode {
 struct VarDeclNode : ASTNode {
     std::string name;
     std::string type;
-    std::string resolvedType; //added   
+    std::string resolvedType;
+    std::string heapElementType; 
     NodePtr initializer; 
 };
 
@@ -96,4 +98,19 @@ struct WhileStmtNode : ASTNode {
 struct AssignStmtNode : ASTNode {
     std::string name;
     NodePtr value;
+};
+
+struct HeapAllocExprNode : ASTNode {
+    std::string elementType;  // the T in heap<T>
+    NodePtr size;             // heap_alloc(10) → size = 10
+};
+
+struct FreeStmtNode : ASTNode {
+    std::string varName;
+};
+
+struct IndexExprNode : ASTNode {
+    std::string varName;
+    NodePtr index;
+    std::string resolvedType;
 };
