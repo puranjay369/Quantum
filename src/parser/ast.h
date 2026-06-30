@@ -9,6 +9,7 @@ enum class NodeType {
     ForStmt, WhileStmt, AssignStmt, 
     BinOp, IntLiteral, FloatLiteral,
     HeapAllocExpr,FreeStmt,IndexExpr,
+    GoStmt,
     StringLiteral, Identifier, FunctionCall
 };
 
@@ -113,4 +114,9 @@ struct IndexExprNode : ASTNode {
     std::string varName;
     NodePtr index;
     std::string resolvedType;
+};
+
+struct GoStmtNode : ASTNode {
+    std::string funcName;
+    std::vector<NodePtr> args;
 };

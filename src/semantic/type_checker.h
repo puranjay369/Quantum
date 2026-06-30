@@ -31,6 +31,7 @@ private:
     void checkWhile(WhileStmtNode* node);
     void checkAssign(AssignStmtNode* node);
     void checkFree(FreeStmtNode* node);
+    void checkGo(GoStmtNode* node);
 
     // Expression evaluators (return the resolved type like "int" or "string")
     std::string checkIndex(IndexExprNode* node);

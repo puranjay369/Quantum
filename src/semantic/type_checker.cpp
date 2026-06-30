@@ -4,6 +4,7 @@
 TypeChecker::TypeChecker() : currentReturnType("void") {
     // Pre-declare built-in global functions
     symTable.define("print", "void", true);
+    symTable.define("wait_all", "void", true);
 }
 
 void TypeChecker::check(ProgramNode* program) {
@@ -75,6 +76,9 @@ void TypeChecker::checkStatement(ASTNode* node) {
             break;
         case NodeType::FreeStmt:
             checkFree(static_cast<FreeStmtNode*>(node));
+            break;
+        case NodeType::GoStmt:
+            checkGo(static_cast<GoStmtNode*>(node));
             break;
         default:
             checkExpr(node);
@@ -255,4 +259,29 @@ std::string TypeChecker::checkIndex(IndexExprNode* node) {
         return elemType;
     }
     throw std::runtime_error("Type Error: Cannot index non-heap variable '" + node->varName + "'.");
+}
+
+void TypeChecker::checkGo(GoStmtNode* node) {
+    SymbolInfo info = symTable.lookup(node->funcName);
+    if (!info.isFunction) {
+        throw std::runtime_error(
+            "Type Error: 'go " + node->funcName + "' — '" + node->funcName + "' is not a function."
+        );
+    }
+    if (node->args.size() != info.paramTypes.size()) {
+        throw std::runtime_error(
+            "Type Error: go " + node->funcName + " expects " +
+            std::to_string(info.paramTypes.size()) + " arguments, got " +
+            std::to_string(node->args.size()) + "."
+        );
+    }
+    for (size_t i = 0; i < node->args.size(); ++i) {
+        std::string argType = checkExpr(node->args[i].get());
+        if (argType != info.paramTypes[i]) {
+            throw std::runtime_error(
+                "Type Error: go " + node->funcName + " argument " + std::to_string(i + 1) +
+                " expects '" + info.paramTypes[i] + "', got '" + argType + "'."
+            );
+        }
+    }
 }

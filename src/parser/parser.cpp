@@ -96,6 +96,7 @@ NodePtr Parser::parseStatement() {
     if (check(TokenType::KW_FOR))    return parseForStmt();
     if (check(TokenType::KW_WHILE))  return parseWhileStmt();
     if (check(TokenType::KW_FREE))   return parseFreeStmt();
+    if (check(TokenType::KW_GO))     return parseGoStmt();
     
     return parseAssignOrCall();
 }
@@ -325,6 +326,22 @@ NodePtr Parser::parseFreeStmt() {
     expect(TokenType::KW_FREE, "free");
     expect(TokenType::LPAREN, "(");
     node->varName = expect(TokenType::IDENT, "variable name").value;
+    expect(TokenType::RPAREN, ")");
+    expect(TokenType::SEMICOLON, ";");
+    return node;
+}
+
+NodePtr Parser::parseGoStmt() {
+    auto node = std::make_unique<GoStmtNode>();
+    node->kind = NodeType::GoStmt;
+    node->line = peek().line;
+    expect(TokenType::KW_GO, "go");
+    node->funcName = expect(TokenType::IDENT, "function name").value;
+    expect(TokenType::LPAREN, "(");
+    while (!check(TokenType::RPAREN) && !isAtEnd()) {
+        node->args.push_back(parseExpression());
+        if (!check(TokenType::RPAREN)) expect(TokenType::COMMA, ",");
+    }
     expect(TokenType::RPAREN, ")");
     expect(TokenType::SEMICOLON, ";");
     return node;

@@ -36,6 +36,10 @@ private:
     void genFunctionCall(FunctionCallNode* node);
     void genFree(FreeStmtNode* node);
     
+    void genGo(GoStmtNode* node);
+    int threadCounter = 0; // unique thread variable names
+    std::vector<std::string> spawnedThreads; // track thread var names per function
+    
     std::string genExpr(ASTNode* node);              // Returns C expression as a string
     std::string buildPrintf(FunctionCallNode* node); // Converts print() -> printf()
     std::string mapType(const std::string& qtype);   // Maps int->int, string->char*, etc.
