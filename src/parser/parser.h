@@ -38,7 +38,8 @@ private:
     NodePtr                          parseHeapAlloc();     // parses heap_alloc(10)
     NodePtr                          parseFreeStmt();      // parses free(arr);
     NodePtr                          parseIndexExpr(const std::string& name); // parses arr[i]
-    
+    NodePtr                          parseGoStmt();
+
     // Expression precedence parsers (lowest to highest precedence)
     NodePtr                          parseExpression();
     NodePtr                          parseComparison();

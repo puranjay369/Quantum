@@ -147,7 +147,7 @@ int main(int argc, char* argv[]) {
     cFile.close();
 
     // Compile with gcc
-    int result = system("gcc output.c -o output -lm");
+    int result = system("gcc output.c -o output -lm -lpthread");
     if (result != 0) {
         std::cerr << "gcc compilation failed\n";
         return 1;

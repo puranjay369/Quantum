@@ -16,7 +16,8 @@ void CodeGen::emitRaw(const std::string& s) {
 std::string CodeGen::generate(ProgramNode* program) {
     out << "#include <stdio.h>\n";
     out << "#include <stdlib.h>\n";
-    out << "#include <math.h>\n\n";
+    out << "#include <math.h>\n";
+    out << "#include <pthread.h>\n\n";
     genProgram(program);
     return out.str();
 }
@@ -50,6 +51,22 @@ void CodeGen::genFunction(FunctionDefNode* node) {
     out << ") ";
 
     genBlock(static_cast<BlockNode*>(node->body.get()));
+    out << "\n";
+
+    // pthread-compatible wrapper, only useful if called via `go`
+    if (!node->params.empty()) {
+        out << "void* " << node->name << "_thread(void* arg) {\n";
+        out << "    int " << node->params[0].first << " = *(int*)arg;\n";
+        out << "    free(arg);\n";
+        out << "    " << node->name << "(" << node->params[0].first << ");\n";
+        out << "    return NULL;\n";
+        out << "}\n";
+    } else {
+        out << "void* " << node->name << "_thread(void* arg) {\n";
+        out << "    " << node->name << "();\n";
+        out << "    return NULL;\n";
+        out << "}\n";
+    }
 }
 
 void CodeGen::genBlock(BlockNode* node) {
@@ -87,6 +104,9 @@ void CodeGen::genStatement(ASTNode* node) {
             break;
         case NodeType::FreeStmt:
             genFree(static_cast<FreeStmtNode*>(node));
+            break;
+        case NodeType::GoStmt:
+            genGo(static_cast<GoStmtNode*>(node));
             break;
         default:
             // expression statement (e.g. a bare expression)
@@ -187,6 +207,15 @@ std::string CodeGen::genExpr(ASTNode* node) {
                 return buildPrintf(n);
             }
 
+            if (n->callee == "wait_all") {
+                std::string joins;
+                for (auto& t : spawnedThreads) {
+                    joins += "pthread_join(" + t + ", NULL); ";
+                }
+                spawnedThreads.clear();
+                return joins.empty() ? "" : joins.substr(0, joins.size() - 1);
+            }
+
             std::string call = n->callee + "(";
             for (size_t i = 0; i < n->args.size(); i++) {
                 call += genExpr(n->args[i].get());
@@ -198,11 +227,27 @@ std::string CodeGen::genExpr(ASTNode* node) {
         case NodeType::IndexExpr: {
             auto* n = static_cast<IndexExprNode*>(node);
             return n->varName + "[" + genExpr(n->index.get()) + "]";
-}
+        }  
 
         default:
             throw std::runtime_error("CodeGen: unknown expression node");
     }
+}
+
+void CodeGen::genGo(GoStmtNode* node) {
+    std::string threadVar = "t" + std::to_string(threadCounter++);
+    emit("pthread_t " + threadVar + ";");
+
+    if (node->args.empty()) {
+        emit("pthread_create(&" + threadVar + ", NULL, (void*(*)(void*))" + node->funcName + "_thread, NULL);");
+    } else {
+        // pack single int arg via pointer
+        std::string argVal = genExpr(node->args[0].get());
+        std::string argVar = "arg" + std::to_string(threadCounter);
+        emit("int* " + argVar + " = malloc(sizeof(int)); *" + argVar + " = " + argVal + ";");
+        emit("pthread_create(&" + threadVar + ", NULL, " + node->funcName + "_thread, " + argVar + ");");
+    }
+    spawnedThreads.push_back(threadVar);
 }
 
 // Map Quantum's print(x) to the right printf format string
