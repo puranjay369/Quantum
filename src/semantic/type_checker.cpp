@@ -12,6 +12,10 @@ void TypeChecker::check(ProgramNode* program) {
 }
 
 void TypeChecker::checkProgram(ProgramNode* node) {
+    for (auto& decl : node->globals) {
+        checkChanDecl(static_cast<ChanDeclNode*>(decl.get()));
+    }
+
     // First pass: register all function signatures globally so they can call each other out-of-order.
     for (auto& fn : node->functions) {
         auto* fnode = static_cast<FunctionDefNode*>(fn.get());
@@ -79,6 +83,15 @@ void TypeChecker::checkStatement(ASTNode* node) {
             break;
         case NodeType::GoStmt:
             checkGo(static_cast<GoStmtNode*>(node));
+            break;
+        case NodeType::ChanDecl:
+            checkChanDecl(static_cast<ChanDeclNode*>(node));
+            break;
+        case NodeType::ChanSend:
+            checkChanSend(static_cast<ChanSendNode*>(node));
+            break;
+        case NodeType::ChanRecv:
+            checkChanRecv(static_cast<ChanRecvNode*>(node));
             break;
         default:
             checkExpr(node);
@@ -181,6 +194,9 @@ std::string TypeChecker::checkExpr(ASTNode* node) {
         
         case NodeType::IndexExpr:
             return checkIndex(static_cast<IndexExprNode*>(node));
+        
+        case NodeType::ChanRecv:
+            return checkChanRecv(static_cast<ChanRecvNode*>(node));
 
         default:
             throw std::runtime_error("Type Error: Unknown expression type.");
@@ -284,4 +300,36 @@ void TypeChecker::checkGo(GoStmtNode* node) {
             );
         }
     }
+}
+
+void TypeChecker::checkChanDecl(ChanDeclNode* node) {
+    symTable.define(node->name, "chan<" + node->elementType + ">", false);
+}
+
+void TypeChecker::checkChanSend(ChanSendNode* node) {
+    SymbolInfo info = symTable.lookup(node->chanName);
+    if (info.type.substr(0, 5) != "chan<") {
+        throw std::runtime_error(
+            "Type Error: '" + node->chanName + "' is not a channel."
+        );
+    }
+    std::string elemType = info.type.substr(5, info.type.size() - 6);
+    std::string valType  = checkExpr(node->value.get());
+    if (valType != elemType) {
+        throw std::runtime_error(
+            "Type Error: Cannot send '" + valType + "' on channel<" + elemType + ">."
+        );
+    }
+}
+
+std::string TypeChecker::checkChanRecv(ChanRecvNode* node) {
+    SymbolInfo info = symTable.lookup(node->chanName);
+    if (info.type.substr(0, 5) != "chan<") {
+        throw std::runtime_error(
+            "Type Error: '" + node->chanName + "' is not a channel."
+        );
+    }
+    std::string elemType = info.type.substr(5, info.type.size() - 6);
+    node->resolvedType = elemType;
+    return elemType;
 }

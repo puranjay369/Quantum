@@ -39,6 +39,11 @@ private:
     NodePtr                          parseFreeStmt();      // parses free(arr);
     NodePtr                          parseIndexExpr(const std::string& name); // parses arr[i]
     NodePtr                          parseGoStmt();
+    NodePtr                          parseChanDecl();
+    NodePtr                          parseChanSend(const std::string& name);
+    NodePtr                          parseChanRecv(const std::string& name);
+    NodePtr                          parseChanRecvExpr(const std::string& name);
+    NodePtr                          parseChanRecvStmt(const std::string& name);
 
     // Expression precedence parsers (lowest to highest precedence)
     NodePtr                          parseExpression();
