@@ -32,10 +32,13 @@ private:
     void checkAssign(AssignStmtNode* node);
     void checkFree(FreeStmtNode* node);
     void checkGo(GoStmtNode* node);
+    void checkChanDecl(ChanDeclNode* node);
+    void checkChanSend(ChanSendNode* node);
 
     // Expression evaluators (return the resolved type like "int" or "string")
     std::string checkIndex(IndexExprNode* node);
     std::string checkExpr(ASTNode* node);
     std::string checkBinOp(BinOpNode* node);
     std::string checkFunctionCall(FunctionCallNode* node);
+    std::string checkChanRecv(ChanRecvNode* node);
 };

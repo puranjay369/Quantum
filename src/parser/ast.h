@@ -10,6 +10,7 @@ enum class NodeType {
     BinOp, IntLiteral, FloatLiteral,
     HeapAllocExpr,FreeStmt,IndexExpr,
     GoStmt,
+    ChanDecl,ChanSend,ChanRecv,
     StringLiteral, Identifier, FunctionCall
 };
 
@@ -80,6 +81,7 @@ struct FunctionDefNode : ASTNode {
 };
 
 struct ProgramNode : ASTNode {
+    std::vector<NodePtr> globals;
     std::vector<NodePtr> functions;
 };
 
@@ -119,4 +121,19 @@ struct IndexExprNode : ASTNode {
 struct GoStmtNode : ASTNode {
     std::string funcName;
     std::vector<NodePtr> args;
+};
+
+struct ChanDeclNode : ASTNode {
+    std::string name;
+    std::string elementType; // the T in chan<T>
+};
+
+struct ChanSendNode : ASTNode {
+    std::string chanName;
+    NodePtr value;
+};
+
+struct ChanRecvNode : ASTNode {
+    std::string chanName;
+    std::string resolvedType;
 };

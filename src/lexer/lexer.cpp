@@ -84,6 +84,7 @@ TokenType Lexer::keywordOrIdent(const std::string& word){
         {"string",  TokenType::TYPE_STRING},
         {"bool",    TokenType::TYPE_BOOL},
         {"heap_alloc", TokenType::KW_HEAP_ALLOC},
+        {"chan",    TokenType::KW_CHAN},
     };
     auto it = keywords.find(word);
     return (it != keywords.end()) ? it->second : TokenType::IDENT;

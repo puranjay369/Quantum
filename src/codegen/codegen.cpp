@@ -17,7 +17,8 @@ std::string CodeGen::generate(ProgramNode* program) {
     out << "#include <stdio.h>\n";
     out << "#include <stdlib.h>\n";
     out << "#include <math.h>\n";
-    out << "#include <pthread.h>\n\n";
+    out << "#include <pthread.h>\n";
+    out << "#include \"runtime/concurrency/channel_api.h\"\n\n";
     genProgram(program);
     return out.str();
 }
@@ -32,6 +33,22 @@ std::string CodeGen::mapType(const std::string& qtype) {
 }
 
 void CodeGen::genProgram(ProgramNode* node) {
+    for (auto& decl : node->globals) {
+        auto* ch = static_cast<ChanDeclNode*>(decl.get());
+        out << "Channel " << ch->name << ";\n";    
+    }
+
+    if (!node->globals.empty()) {
+       out << "\nstatic void __q_init_globals(void) {\n";
+        indentLevel++;
+        for (auto& decl : node->globals) {
+            auto* ch = static_cast<ChanDeclNode*>(decl.get());
+            emit("channel_init(&" + ch->name + ");");
+        }
+        indentLevel--;
+        out << "}\n\n";
+    }
+
     for (auto& fn : node->functions) {
         genFunction(static_cast<FunctionDefNode*>(fn.get()));
         out << "\n";
@@ -50,7 +67,26 @@ void CodeGen::genFunction(FunctionDefNode* node) {
     }
     out << ") ";
 
-    genBlock(static_cast<BlockNode*>(node->body.get()));
+    if (node->name == "main") {
+        emit("{");
+        indentLevel++;
+        if (!node->body) {
+            throw std::runtime_error("CodeGen: main function has no body");
+        }
+        if (node->body->kind != NodeType::Block) {
+            throw std::runtime_error("CodeGen: main body must be a block");
+        }
+        emit("__q_init_globals();");
+        auto* block = static_cast<BlockNode*>(node->body.get());
+        for (auto& stmt : block->statements) {
+            genStatement(stmt.get());
+        }
+        indentLevel--;
+        emit("}");
+    } else {
+        genBlock(static_cast<BlockNode*>(node->body.get()));
+    }
+
     out << "\n";
 
     // pthread-compatible wrapper, only useful if called via `go`
@@ -107,6 +143,12 @@ void CodeGen::genStatement(ASTNode* node) {
             break;
         case NodeType::GoStmt:
             genGo(static_cast<GoStmtNode*>(node));
+            break;
+        case NodeType::ChanDecl:
+            genChanDecl(static_cast<ChanDeclNode*>(node));
+            break;
+        case NodeType::ChanSend:
+            genChanSend(static_cast<ChanSendNode*>(node));
             break;
         default:
             // expression statement (e.g. a bare expression)
@@ -227,7 +269,12 @@ std::string CodeGen::genExpr(ASTNode* node) {
         case NodeType::IndexExpr: {
             auto* n = static_cast<IndexExprNode*>(node);
             return n->varName + "[" + genExpr(n->index.get()) + "]";
-        }  
+        } 
+        
+        case NodeType::ChanRecv: {
+            auto* n = static_cast<ChanRecvNode*>(node);
+            return "channel_recv(&" + n->chanName + ")";
+        }
 
         default:
             throw std::runtime_error("CodeGen: unknown expression node");
@@ -248,6 +295,15 @@ void CodeGen::genGo(GoStmtNode* node) {
         emit("pthread_create(&" + threadVar + ", NULL, " + node->funcName + "_thread, " + argVar + ");");
     }
     spawnedThreads.push_back(threadVar);
+}
+
+void CodeGen::genChanDecl(ChanDeclNode* node) {
+    emit("Channel " + node->name + ";");
+    emit("channel_init(&" + node->name + ");");
+}
+
+void CodeGen::genChanSend(ChanSendNode* node) {
+    emit("channel_send(&" + node->chanName + ", " + genExpr(node->value.get()) + ");");
 }
 
 // Map Quantum's print(x) to the right printf format string

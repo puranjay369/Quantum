@@ -35,6 +35,8 @@ private:
     void genAssign(AssignStmtNode* node);
     void genFunctionCall(FunctionCallNode* node);
     void genFree(FreeStmtNode* node);
+    void genChanDecl(ChanDeclNode* node);
+    void genChanSend(ChanSendNode* node);
     
     void genGo(GoStmtNode* node);
     int threadCounter = 0; // unique thread variable names
