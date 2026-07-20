@@ -14,83 +14,106 @@
 
 ---
 
-## What has been built (as of session 2)
+## What has been built (as of session 4)
 
-### Phase 1 — Lexer  { COMPLETE }
+### Phase 1 — Lexer ✅ COMPLETE
 
-Files written:
-- `src/lexer/token_types.h` — enum class `TokenType` covering all keywords, operators, literals, delimiters
-- `src/lexer/token.h` — `Token` struct: `{TokenType type, string value, int line, int col}`
-- `src/lexer/lexer.h` — `Lexer` class declaration
-- `src/lexer/lexer.cpp` — full implementation: `peek()`, `peeknext()`, `advance()`, `skipWhitespaceAndComments()`, `readNumber()`, `readString()`, `readIdentOrKeyword()`, `tokenize()`
+Files: `src/lexer/token_types.h`, `token.h`, `lexer.h`, `lexer.cpp`
 
 Key behaviours:
 - Handles `->` vs `-`, `..` vs `.`, `==` vs `=`, `!=`, `<=`, `>=`
 - Line comments via `//`
 - Tracks line + col for every token
-- `@` is emitted as `AT` token (for `@Secure`)
-
-Milestone reached: `./qcc examples/hello.q` prints all tokens with line/col. 
-
----
-
-### Phase 2 — Parser + AST  { COMPLETE }
-
-Files written:
-- `src/parser/ast.h` — all AST node structs using `unique_ptr` ownership:
-  - `ProgramNode`, `FunctionDefNode`, `BlockNode`
-  - `VarDeclNode`, `ReturnStmtNode`, `IfStmtNode`
-  - `BinOpNode`, `IntLiteralNode`, `FloatLiteralNode`, `StringLiteralNode`
-  - `IdentifierNode`, `FunctionCallNode`
-  - `NodePtr = unique_ptr<ASTNode>`
-- `src/parser/parser.h` — `Parser` class declaration
-- `src/parser/parser.cpp` — recursive-descent parser:
-  - `parseProgram()` → `parseFunctionDef()` → `parseBlock()` → `parseStatement()`
-  - Expression chain: `parseExpression` → `parseComparison` → `parseAddSub` → `parseMulDiv` → `parsePrimary`
-  - Handles `@Secure` annotation on functions
-  - Throws `std::runtime_error` with line number on syntax errors
-- `src/main.cpp` — entry point: reads `.q` file → lexes → parses → calls `printAST()` to print the tree
-
-Milestone reached: `./qcc examples/hello.q` prints a correct AST tree. 
+- `@` emitted as `AT` token (for `@Secure`)
+- Bug fixed: `peeknext()` was returning `source[pos]` instead of `source[pos + 1]` — broke floats and all multi-char tokens
+- `heap_alloc` added as `KW_HEAP_ALLOC` keyword token
 
 ---
 
-### Phase 3 — C Code Emitter  { COMPLETE }
+### Phase 2 — Parser + AST ✅ COMPLETE
 
-Files written:
-- `src/codegen/codegen.h` — `CodeGen` class declaration
-- `src/codegen/codegen.cpp` — walks the AST and emits valid C code:
-  - `generate()` — entry point, emits `#include` headers then calls `genProgram()`
-  - `genFunction()` — emits C function signature + body
-  - `genBlock()` — emits `{ ... }` with indentation
-  - `genVarDecl()` — emits `int x = 5;` style declarations
-  - `genReturn()` — emits `return expr;`
-  - `genIf()` — emits `if (cond) { } else { }`
-  - `genExpr()` — recursively emits expressions; maps `^` to `pow()`
-  - `buildPrintf()` — maps Quantum's `print()` to `printf()` with format string heuristic
-  - `mapType()` — maps Quantum types to C types: `int→int`, `float→double`, `string→char*`
-- `src/main.cpp` — updated: after parsing, calls `CodeGen::generate()`, writes `output.c`, shells out to `gcc -lm`, produces `./output` binary
+Files: `src/parser/ast.h`, `parser.h`, `parser.cpp`
 
-Known limitation: `buildPrintf` currently defaults to `%d`/heuristics until we deeply bind the types resolved from Phase 4 directly to the AST nodes before running CodeGen.
+AST nodes:
+- `ProgramNode`, `FunctionDefNode` (has `isSecure`), `BlockNode`
+- `VarDeclNode` (has `resolvedType`, `heapElementType`), `ReturnStmtNode`, `IfStmtNode`
+- `ForStmtNode` — `for i in start..end { }`
+- `WhileStmtNode` — `while (cond) { }`
+- `AssignStmtNode` — `x = expr;`
+- `HeapAllocExprNode` — `heap_alloc(n)` with `elementType`, `size`
+- `FreeStmtNode` — `free(varName)`
+- `IndexExprNode` — `arr[i]` with `resolvedType`
+- `BinOpNode`, `IntLiteralNode`, `FloatLiteralNode`, `StringLiteralNode`
+- `IdentifierNode` (has `resolvedType`), `FunctionCallNode`
 
-Milestone reached: `./qcc examples/hello.q && ./output` compiles and runs Quantum code. 
+Parser handles:
+- `parseTypeName()` — handles `heap<T>` returning `"heap<int>"` etc
+- `parseAssignOrCall()` — peeks ahead to distinguish assignment vs function call
+- `parseHeapAlloc()`, `parseFreeStmt()`
+- `IndexAssignNode` (`arr[i] = expr`) — NOT YET IMPLEMENTED, deferred to post-Phase 6
 
 ---
 
-### Phase 4 — Type Checker & Semantic Analysis { COMPLETE }
+### Phase 3 — C Code Emitter ✅ COMPLETE
 
-Files written:
-- `src/semantic/symbol_table.h` & `symbol_table.cpp` — Stack of hash maps that handles local scopes logic (`enterScope`, `exitScope`).
-- `src/semantic/type_checker.h` & `type_checker.cpp` — Traverses the AST validating variables exist, expressions match logically (e.g. `int == int`), checks function signatures, and ensures `return` types match the declared function.
+Files: `src/codegen/codegen.h`, `codegen.cpp`
 
-Milestone reached: Semantic validation blocks compilation and throws descriptive errors before CodeGen if types are faulty. 
+Gen methods: `genFunction()`, `genBlock()`, `genVarDecl()`, `genReturn()`, `genIf()`, `genFor()`, `genWhile()`, `genAssign()`, `genFree()`, `genExpr()`, `buildPrintf()`, `mapType()`
+
+Key details:
+- `genVarDecl()` detects `heap<T>` type and emits `malloc()` instead of stack declaration
+- `inSecureContext` flag set in `genFunction()` — heap allocs inside `@Secure` get a `// secure_region` comment
+- `buildPrintf()` reads `resolvedType` from `IdentifierNode` — no heuristics
+- `genExpr()` handles `IndexExprNode` — emits `arr[i]`
+- `#include <stdlib.h>` added for `malloc`/`free`
+- `^` maps to `pow()`, `-lm` in gcc call
+
+---
+
+### Phase 4 — Type Checker & Semantic Analysis ✅ COMPLETE
+
+Files: `src/semantic/symbol_table.h`, `symbol_table.cpp`, `type_checker.h`, `type_checker.cpp`
+
+Key details:
+- `checkBlock(bool createScope = true)` — called with `false` from `checkFunction()` to avoid double scoping
+- `checkVarDecl()` — detects `heap<T>`, sets `heapElementType`, calls `memTracker.trackHeapVar()`
+- `checkFree()` — validates variable is heap type, checks not already freed, marks freed
+- `checkIndex()` — checks use-after-free, extracts element type from `heap<T>`
+- `checkAssign()`, `checkFor()`, `checkWhile()`, `checkIf()`
+- `resolvedType` written directly onto AST nodes during traversal — codegen reads from nodes, not symbol table
+- `getType(name)` public method exists but scopes are gone after checking — use `resolvedType` on nodes instead
+
+---
+
+### Phase 5 — @Secure Enforcement + Memory Model ✅ COMPLETE (partial)
+
+Files: `src/security/secure_checker.h`, `secure_checker.cpp`, `src/memory/memory_manager.h`, `memory_manager.cpp`
+
+What works:
+- `@Secure` functions reject `free()` calls
+- `@Secure` functions reject `heap<T>` allocations — checked via `node->type.substr(0,5) == "heap<"`
+- `MemoryTracker` (in `memory_manager.h/.cpp`) tracks heap variables and freed variables
+- Use-after-free detection — throws `Memory Error at line N: use of freed variable 'x'`
+- `free()` on non-heap variable throws error
+
+Known limitations / deferred to post-Phase 6:
+- `arr[i] = value` index assignment not yet parsed (`IndexAssignNode` not implemented)
+- Full array support (heap arrays work for alloc/free but element assignment deferred)
+- Stack allocator (`stack_alloc`) not implemented yet
+- No runtime encryption of `secure_region` memory yet
+- Full ownership / borrow-checker style tracking deferred
 
 ---
 
 ## Current build command
 
 ```bash
-g++ src/main.cpp src/lexer/lexer.cpp src/parser/parser.cpp src/semantic/symbol_table.cpp src/semantic/type_checker.cpp src/codegen/codegen.cpp -Isrc -std=c++17 -o qcc
+g++ src/main.cpp src/lexer/lexer.cpp src/parser/parser.cpp \
+    src/semantic/symbol_table.cpp src/semantic/type_checker.cpp \
+    src/security/secure_checker.cpp \
+    src/memory/memory_manager.cpp \
+    src/codegen/codegen.cpp \
+    -Isrc -std=c++17 -o qcc
 ./qcc examples/hello.q
 ./output
 ```
@@ -99,10 +122,10 @@ g++ src/main.cpp src/lexer/lexer.cpp src/parser/parser.cpp src/semantic/symbol_t
 
 ## Working example programs
 
-**Function call + arithmetic:**
+**Functions + arithmetic:**
 ```
 fn multiply(a: int, b: int) -> int {
-    return a + b;
+    return a * b;
 }
 fn main() {
     let x: int = 6;
@@ -116,11 +139,59 @@ fn main() {
 ```
 fn main() {
     let age: int = 20;
-    if (age > 18) {
-        print(1);
-    } else {
-        print(0);
-    }
+    if (age > 18) { print(1); } else { print(0); }
+}
+```
+
+**For loop:**
+```
+fn main() {
+    for i in 0..5 { print(i); }
+}
+```
+
+**While loop + assignment:**
+```
+fn main() {
+    let x: int = 0;
+    while (x < 5) { print(x); x = x + 1; }
+}
+```
+
+**Mixed types:**
+```
+fn main() {
+    let x: float = 3.14;
+    let name: string = "Puranjay";
+    let age: int = 20;
+    print(x);
+    print(name);
+    print(age);
+}
+```
+
+**Heap alloc + free:**
+```
+fn main() {
+    let arr: heap<int> = heap_alloc(5);
+    free(arr);
+}
+```
+
+**Use-after-free rejection:**
+```
+fn main() {
+    let arr: heap<int> = heap_alloc(5);
+    free(arr);
+    print(arr);  // rejected: Memory Error at line 4
+}
+```
+
+**@Secure rejection:**
+```
+@Secure
+fn safeFunc() {
+    let arr: heap<int> = heap_alloc(5);  // rejected
 }
 ```
 
@@ -128,24 +199,28 @@ fn main() {
 
 ## What is NOT built yet
 
-| Phase | What | Status |
-|-------|------|--------|
-| 5 | `@Secure` enforcement + memory model | not started |
-| 6 | Goroutines + channels + LLVM backend | not started |
+| Feature | Status |
+|---------|--------|
+| Phase 6: Goroutines + channels | not started |
+| Phase 6: LLVM backend | not started |
+| `arr[i] = value` index assignment | deferred post-Phase 6 |
+| Stack allocator | deferred post-Phase 6 |
+| Full array support | deferred post-Phase 6 |
+| Structs + impl blocks | deferred |
 
 ---
 
-## Key design decisions made
+## Key design decisions
 
-- LLVM backend is deferred — Phase 3 emits C and calls `gcc`, swapping LLVM in at Phase 6
-- `@Secure` is already tokenised and parsed (`FunctionDefNode.isSecure = true`) but not enforced yet
-- No garbage collector — stack-first, manual heap in QF mode
-- Goroutine syntax (`go`, channels) is tokenised but not parsed yet
-- `output.c` and `./output` are intermediate build artifacts, not committed to repo
+- LLVM backend deferred — emits C and calls `gcc`, swapping LLVM in at Phase 6
+- `resolvedType` written onto AST nodes by type checker — codegen reads from nodes not symbol table
+- Goroutine syntax tokenised but not parsed yet
+- `output.c` and `./output` are build artifacts, not committed to repo
+- `IndexAssignNode` (`arr[i] = expr`) deferred to after Phase 6
 
 ---
 
-## File structure (relevant files only)
+## File structure
 
 ```
 src/
@@ -164,6 +239,12 @@ src/
     symbol_table.cpp
     type_checker.h
     type_checker.cpp
+  security/
+    secure_checker.h
+    secure_checker.cpp
+  memory/
+    memory_manager.h
+    memory_manager.cpp
   codegen/
     codegen.h
     codegen.cpp
@@ -173,7 +254,20 @@ examples/
 
 ---
 
-## Next task for AI
+## Next task for AI — Phase 6: Goroutines + Channels + LLVM
 
-**Phase 5 — @Secure & Memory Model**
-Enforce memory rules on the AST. Validate the `@Secure` annotations, block raw pointer arithmetic manually, and implement strict ownership tracking inside of Secure functions.
+Step 1 — Parse and codegen goroutines using pthreads:
+- `go funcName(args)` → spawns a pthread
+- `wait_all()` → `pthread_join` on all spawned threads
+- Add `GoStmtNode` to AST
+
+Step 2 — Channels:
+- `chan<int> numbers;` — typed channel declaration
+- `numbers.send(x)` — send value
+- `numbers.recv()` — receive value
+- Implement as a thread-safe queue using mutex + condition variable in C
+
+Step 3 — LLVM backend (swap C emitter):
+- Replace `system("gcc output.c ...")` with real LLVM IR generation
+- Use LLVM C++ API to emit IR from AST
+- Hook up LLVM optimiser passes (O1–O3)

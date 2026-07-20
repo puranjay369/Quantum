@@ -6,7 +6,11 @@
 enum class NodeType {
     Program, FunctionDef, Block,
     VarDecl, ReturnStmt, IfStmt,
+    ForStmt, WhileStmt, AssignStmt, 
     BinOp, IntLiteral, FloatLiteral,
+    HeapAllocExpr,FreeStmt,IndexExpr,
+    GoStmt,
+    ChanDecl,ChanSend,ChanRecv,
     StringLiteral, Identifier, FunctionCall
 };
 
@@ -32,6 +36,7 @@ struct StringLiteralNode : ASTNode {
 
 struct IdentifierNode : ASTNode {
     std::string name;
+    std::string resolvedType; //added
 };
 
 struct BinOpNode : ASTNode {
@@ -42,7 +47,9 @@ struct BinOpNode : ASTNode {
 
 struct VarDeclNode : ASTNode {
     std::string name;
-    std::string type;   
+    std::string type;
+    std::string resolvedType;
+    std::string heapElementType; 
     NodePtr initializer; 
 };
 
@@ -74,5 +81,59 @@ struct FunctionDefNode : ASTNode {
 };
 
 struct ProgramNode : ASTNode {
+    std::vector<NodePtr> globals;
     std::vector<NodePtr> functions;
+};
+
+struct ForStmtNode : ASTNode {
+    std::string varName;     // i
+    NodePtr rangeStart;      // 0
+    NodePtr rangeEnd;        // 10
+    NodePtr body;            // BlockNode
+    std::string resolvedType = "int"; // range vars are always int
+};
+
+struct WhileStmtNode : ASTNode {
+    NodePtr condition;
+    NodePtr body;
+};
+
+struct AssignStmtNode : ASTNode {
+    std::string name;
+    NodePtr value;
+};
+
+struct HeapAllocExprNode : ASTNode {
+    std::string elementType;  // the T in heap<T>
+    NodePtr size;             // heap_alloc(10) → size = 10
+};
+
+struct FreeStmtNode : ASTNode {
+    std::string varName;
+};
+
+struct IndexExprNode : ASTNode {
+    std::string varName;
+    NodePtr index;
+    std::string resolvedType;
+};
+
+struct GoStmtNode : ASTNode {
+    std::string funcName;
+    std::vector<NodePtr> args;
+};
+
+struct ChanDeclNode : ASTNode {
+    std::string name;
+    std::string elementType; // the T in chan<T>
+};
+
+struct ChanSendNode : ASTNode {
+    std::string chanName;
+    NodePtr value;
+};
+
+struct ChanRecvNode : ASTNode {
+    std::string chanName;
+    std::string resolvedType;
 };

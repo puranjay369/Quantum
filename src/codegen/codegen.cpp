@@ -13,6 +13,16 @@ void CodeGen::emitRaw(const std::string& s) {
     out << s;
 }
 
+std::string CodeGen::generate(ProgramNode* program) {
+    out << "#include <stdio.h>\n";
+    out << "#include <stdlib.h>\n";
+    out << "#include <math.h>\n";
+    out << "#include <pthread.h>\n";
+    out << "#include \"runtime/concurrency/channel_api.h\"\n\n";
+    genProgram(program);
+    return out.str();
+}
+
 std::string CodeGen::mapType(const std::string& qtype) {
     if (qtype == "int")    return "int";
     if (qtype == "float")  return "double";
@@ -22,15 +32,23 @@ std::string CodeGen::mapType(const std::string& qtype) {
     return qtype; // user-defined struct names pass through
 }
 
-std::string CodeGen::generate(ProgramNode* program) {
-    // Standard C headers every Quantum program needs
-    out << "#include <stdio.h>\n";
-    out << "#include <math.h>\n\n";
-    genProgram(program);
-    return out.str();
-}
-
 void CodeGen::genProgram(ProgramNode* node) {
+    for (auto& decl : node->globals) {
+        auto* ch = static_cast<ChanDeclNode*>(decl.get());
+        out << "Channel " << ch->name << ";\n";    
+    }
+
+    if (!node->globals.empty()) {
+       out << "\nstatic void __q_init_globals(void) {\n";
+        indentLevel++;
+        for (auto& decl : node->globals) {
+            auto* ch = static_cast<ChanDeclNode*>(decl.get());
+            emit("channel_init(&" + ch->name + ");");
+        }
+        indentLevel--;
+        out << "}\n\n";
+    }
+
     for (auto& fn : node->functions) {
         genFunction(static_cast<FunctionDefNode*>(fn.get()));
         out << "\n";
@@ -38,6 +56,7 @@ void CodeGen::genProgram(ProgramNode* node) {
 }
 
 void CodeGen::genFunction(FunctionDefNode* node) {
+    inSecureContext = node->isSecure;
     // Return type and name
     out << mapType(node->returnType) << " " << node->name << "(";
 
@@ -48,7 +67,42 @@ void CodeGen::genFunction(FunctionDefNode* node) {
     }
     out << ") ";
 
-    genBlock(static_cast<BlockNode*>(node->body.get()));
+    if (node->name == "main") {
+        emit("{");
+        indentLevel++;
+        if (!node->body) {
+            throw std::runtime_error("CodeGen: main function has no body");
+        }
+        if (node->body->kind != NodeType::Block) {
+            throw std::runtime_error("CodeGen: main body must be a block");
+        }
+        emit("__q_init_globals();");
+        auto* block = static_cast<BlockNode*>(node->body.get());
+        for (auto& stmt : block->statements) {
+            genStatement(stmt.get());
+        }
+        indentLevel--;
+        emit("}");
+    } else {
+        genBlock(static_cast<BlockNode*>(node->body.get()));
+    }
+
+    out << "\n";
+
+    // pthread-compatible wrapper, only useful if called via `go`
+    if (!node->params.empty()) {
+        out << "void* " << node->name << "_thread(void* arg) {\n";
+        out << "    int " << node->params[0].first << " = *(int*)arg;\n";
+        out << "    free(arg);\n";
+        out << "    " << node->name << "(" << node->params[0].first << ");\n";
+        out << "    return NULL;\n";
+        out << "}\n";
+    } else {
+        out << "void* " << node->name << "_thread(void* arg) {\n";
+        out << "    " << node->name << "();\n";
+        out << "    return NULL;\n";
+        out << "}\n";
+    }
 }
 
 void CodeGen::genBlock(BlockNode* node) {
@@ -72,8 +126,29 @@ void CodeGen::genStatement(ASTNode* node) {
         case NodeType::IfStmt:
             genIf(static_cast<IfStmtNode*>(node));
             break;
+        case NodeType::ForStmt:
+            genFor(static_cast<ForStmtNode*>(node));
+            break;
+        case NodeType::WhileStmt:
+            genWhile(static_cast<WhileStmtNode*>(node));
+            break;
+        case NodeType::AssignStmt:
+            genAssign(static_cast<AssignStmtNode*>(node));
+            break;
         case NodeType::FunctionCall:
             emit(genExpr(node) + ";");
+            break;
+        case NodeType::FreeStmt:
+            genFree(static_cast<FreeStmtNode*>(node));
+            break;
+        case NodeType::GoStmt:
+            genGo(static_cast<GoStmtNode*>(node));
+            break;
+        case NodeType::ChanDecl:
+            genChanDecl(static_cast<ChanDeclNode*>(node));
+            break;
+        case NodeType::ChanSend:
+            genChanSend(static_cast<ChanSendNode*>(node));
             break;
         default:
             // expression statement (e.g. a bare expression)
@@ -82,9 +157,19 @@ void CodeGen::genStatement(ASTNode* node) {
 }
 
 void CodeGen::genVarDecl(VarDeclNode* node) {
-    std::string ctype = mapType(node->type);
-    std::string val   = genExpr(node->initializer.get());
-    emit(ctype + " " + node->name + " = " + val + ";");
+    if (node->type.substr(0, 5) == "heap<") {
+        std::string elemType = mapType(node->heapElementType);
+        std::string size = genExpr(node->initializer.get());
+        // check if inside @Secure — tag as secure_region
+        if (inSecureContext) {
+            emit("// secure_region");
+        }
+        emit(elemType + "* " + node->name + " = (" + elemType + "*)malloc(" + size + " * sizeof(" + elemType + "));");
+    } else {
+        std::string ctype = mapType(node->type);
+        std::string val = genExpr(node->initializer.get());
+        emit(ctype + " " + node->name + " = " + val + ";");
+    }
 }
 
 void CodeGen::genReturn(ReturnStmtNode* node) {
@@ -104,6 +189,31 @@ void CodeGen::genIf(IfStmtNode* node) {
         genBlock(static_cast<BlockNode*>(node->elseBlock.get()));
         indentLevel++;
     }
+}
+
+void CodeGen::genFor(ForStmtNode* node) {
+    std::string var   = node->varName;
+    std::string start = genExpr(node->rangeStart.get());
+    std::string end   = genExpr(node->rangeEnd.get());
+    emit("for (int " + var + " = " + start + "; " + var + " < " + end + "; " + var + "++) ");
+    indentLevel--;
+    genBlock(static_cast<BlockNode*>(node->body.get()));
+    indentLevel++;
+}
+
+void CodeGen::genWhile(WhileStmtNode* node) {
+    emit("while (" + genExpr(node->condition.get()) + ") ");
+    indentLevel--;
+    genBlock(static_cast<BlockNode*>(node->body.get()));
+    indentLevel++;
+}
+
+void CodeGen::genAssign(AssignStmtNode* node) {
+    emit(node->name + " = " + genExpr(node->value.get()) + ";");
+}
+
+void CodeGen::genFree(FreeStmtNode* node) {
+    emit("free(" + node->varName + ");");
 }
 
 std::string CodeGen::genExpr(ASTNode* node) {
@@ -139,6 +249,15 @@ std::string CodeGen::genExpr(ASTNode* node) {
                 return buildPrintf(n);
             }
 
+            if (n->callee == "wait_all") {
+                std::string joins;
+                for (auto& t : spawnedThreads) {
+                    joins += "pthread_join(" + t + ", NULL); ";
+                }
+                spawnedThreads.clear();
+                return joins.empty() ? "" : joins.substr(0, joins.size() - 1);
+            }
+
             std::string call = n->callee + "(";
             for (size_t i = 0; i < n->args.size(); i++) {
                 call += genExpr(n->args[i].get());
@@ -147,29 +266,68 @@ std::string CodeGen::genExpr(ASTNode* node) {
             return call + ")";
         }
 
+        case NodeType::IndexExpr: {
+            auto* n = static_cast<IndexExprNode*>(node);
+            return n->varName + "[" + genExpr(n->index.get()) + "]";
+        } 
+        
+        case NodeType::ChanRecv: {
+            auto* n = static_cast<ChanRecvNode*>(node);
+            return "channel_recv(&" + n->chanName + ")";
+        }
+
         default:
             throw std::runtime_error("CodeGen: unknown expression node");
     }
+}
+
+void CodeGen::genGo(GoStmtNode* node) {
+    std::string threadVar = "t" + std::to_string(threadCounter++);
+    emit("pthread_t " + threadVar + ";");
+
+    if (node->args.empty()) {
+        emit("pthread_create(&" + threadVar + ", NULL, (void*(*)(void*))" + node->funcName + "_thread, NULL);");
+    } else {
+        // pack single int arg via pointer
+        std::string argVal = genExpr(node->args[0].get());
+        std::string argVar = "arg" + std::to_string(threadCounter);
+        emit("int* " + argVar + " = malloc(sizeof(int)); *" + argVar + " = " + argVal + ";");
+        emit("pthread_create(&" + threadVar + ", NULL, " + node->funcName + "_thread, " + argVar + ");");
+    }
+    spawnedThreads.push_back(threadVar);
+}
+
+void CodeGen::genChanDecl(ChanDeclNode* node) {
+    emit("Channel " + node->name + ";");
+    emit("channel_init(&" + node->name + ");");
+}
+
+void CodeGen::genChanSend(ChanSendNode* node) {
+    emit("channel_send(&" + node->chanName + ", " + genExpr(node->value.get()) + ");");
 }
 
 // Map Quantum's print(x) to the right printf format string
 std::string CodeGen::buildPrintf(FunctionCallNode* node) {
     if (node->args.empty()) return "printf(\"\\n\")";
 
-    // Guess format specifier from the argument type
-    // (full type inference comes in Phase 4 — for now we use heuristics)
     auto* arg = node->args[0].get();
-    std::string fmt;
     std::string val = genExpr(arg);
+    std::string fmt;
 
-    if (arg->kind == NodeType::IntLiteral)
+    if (arg->kind == NodeType::IntLiteral) {
         fmt = "%d";
-    else if (arg->kind == NodeType::FloatLiteral)
+    } else if (arg->kind == NodeType::FloatLiteral) {
         fmt = "%f";
-    else if (arg->kind == NodeType::StringLiteral)
+    } else if (arg->kind == NodeType::StringLiteral) {
         fmt = "%s";
-    else
-        fmt = "%d"; // default to int for identifiers until type checker is in
+    } else if (arg->kind == NodeType::Identifier) {
+        std::string type = static_cast<IdentifierNode*>(arg)->resolvedType;
+        if (type == "float")       fmt = "%f";
+        else if (type == "string") fmt = "%s";
+        else                       fmt = "%d";
+    } else {
+        fmt = "%d";
+    }
 
     return "printf(\"" + fmt + "\\n\", " + val + ")";
 }

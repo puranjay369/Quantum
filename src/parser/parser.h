@@ -31,7 +31,20 @@ private:
     NodePtr                          parseVarDecl();
     NodePtr                          parseReturnStmt();
     NodePtr                          parseIfStmt();
-    
+    NodePtr                          parseForStmt();
+    NodePtr                          parseWhileStmt();
+    NodePtr                          parseAssignOrCall();
+    NodePtr                          parseHeapType();      // parses heap<int>
+    NodePtr                          parseHeapAlloc();     // parses heap_alloc(10)
+    NodePtr                          parseFreeStmt();      // parses free(arr);
+    NodePtr                          parseIndexExpr(const std::string& name); // parses arr[i]
+    NodePtr                          parseGoStmt();
+    NodePtr                          parseChanDecl();
+    NodePtr                          parseChanSend(const std::string& name);
+    NodePtr                          parseChanRecv(const std::string& name);
+    NodePtr                          parseChanRecvExpr(const std::string& name);
+    NodePtr                          parseChanRecvStmt(const std::string& name);
+
     // Expression precedence parsers (lowest to highest precedence)
     NodePtr                          parseExpression();
     NodePtr                          parseComparison();

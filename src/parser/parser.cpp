@@ -43,10 +43,12 @@ std::unique_ptr<ProgramNode> Parser::parseProgram() {
             expect(TokenType::IDENT, "annotation name"); // "Secure"
             secure = true;
         }
-        if (check(TokenType::KW_FN)) {
+        if(check(TokenType::KW_CHAN)) {
+            prog->globals.push_back(parseChanDecl());
+        } else if (check(TokenType::KW_FN)) {
             prog->functions.push_back(parseFunctionDef(secure));
         } else {
-            throw std::runtime_error("Expected fn definition");
+            throw std::runtime_error("Expected fn definiton or top-level chan declaration");
         }
     }
     return prog;
@@ -93,10 +95,13 @@ NodePtr Parser::parseStatement() {
     if (check(TokenType::KW_LET))    return parseVarDecl();
     if (check(TokenType::KW_RETURN)) return parseReturnStmt();
     if (check(TokenType::KW_IF))     return parseIfStmt();
-    // expression statement (e.g. a function call)
-    auto expr = parseExpression();
-    expect(TokenType::SEMICOLON, ";");
-    return expr;
+    if (check(TokenType::KW_FOR))    return parseForStmt();
+    if (check(TokenType::KW_WHILE))  return parseWhileStmt();
+    if (check(TokenType::KW_FREE))   return parseFreeStmt();
+    if (check(TokenType::KW_GO))     return parseGoStmt();
+    if (check(TokenType::KW_CHAN))   return parseChanDecl();
+    
+    return parseAssignOrCall();
 }
 
 NodePtr Parser::parseVarDecl() {
@@ -135,6 +140,60 @@ NodePtr Parser::parseIfStmt() {
         node->elseBlock = parseBlock();
     }
     return node;
+}
+
+NodePtr Parser::parseForStmt() {
+    auto node = std::make_unique<ForStmtNode>();
+    node->kind = NodeType::ForStmt;
+    node->line = peek().line;
+    expect(TokenType::KW_FOR, "for");
+    node->varName = expect(TokenType::IDENT, "loop variable").value;
+    expect(TokenType::KW_IN, "in");
+    node->rangeStart = parsePrimary();
+    expect(TokenType::DOTDOT, "..");
+    node->rangeEnd = parsePrimary();
+    node->body = parseBlock();
+    return node;
+}
+
+NodePtr Parser::parseWhileStmt() {
+    auto node = std::make_unique<WhileStmtNode>();
+    node->kind = NodeType::WhileStmt;
+    node->line = peek().line;
+    expect(TokenType::KW_WHILE, "while");
+    expect(TokenType::LPAREN, "(");
+    node->condition = parseExpression();
+    expect(TokenType::RPAREN, ")");
+    node->body = parseBlock();
+    return node;
+}
+
+NodePtr Parser::parseAssignOrCall() {
+    // channel send: name.send(expr)
+    if (check(TokenType::IDENT) && peeknext().type == TokenType::DOT) {
+        std::string name = advance().value; // consume name
+        advance(); // consume .
+        std::string method = expect(TokenType::IDENT, "method name").value;
+        if (method == "send") return parseChanSend(name);
+        if (method == "recv") return parseChanRecv(name);
+        throw std::runtime_error("Unknown method '" + method + "' on '" + name + "'");
+    }
+
+    // peek ahead — if IDENT followed by = it's assignment, if ( it's a call
+    if (check(TokenType::IDENT) && peeknext().type == TokenType::ASSIGN) {
+        auto node = std::make_unique<AssignStmtNode>();
+        node->kind = NodeType::AssignStmt;
+        node->line = peek().line;
+        node->name = advance().value; // consume IDENT
+        advance();                    // consume =
+        node->value = parseExpression();
+        expect(TokenType::SEMICOLON, ";");
+        return node;
+    }
+    // otherwise it's an expression statement (function call etc)
+    auto expr = parseExpression();
+    expect(TokenType::SEMICOLON, ";");
+    return expr;
 }
 
 // Expressions: precedence handled by calling chain
@@ -220,12 +279,23 @@ NodePtr Parser::parsePrimary() {
         node->value = advance().value;
         return node;
     }
+
+    if (check(TokenType::KW_HEAP_ALLOC)) return parseHeapAlloc();
+
     // Identifier or function call
     if (check(TokenType::IDENT)) {
         std::string name = advance().value;
+
+        if (check(TokenType::DOT)) {
+            advance(); // consume .
+            std::string method = expect(TokenType::IDENT, "method name").value;
+            if (method == "recv") return parseChanRecvExpr(name);
+            throw std::runtime_error("Channel send is only valid as a statement");
+        }
+
         if (match(TokenType::LPAREN)) {
             auto node = std::make_unique<FunctionCallNode>();
-            node->kind   = NodeType::FunctionCall;
+            node->kind = NodeType::FunctionCall;
             node->callee = name;
             while (!check(TokenType::RPAREN) && !isAtEnd()) {
                 node->args.push_back(parseExpression());
@@ -234,11 +304,23 @@ NodePtr Parser::parsePrimary() {
             expect(TokenType::RPAREN, ")");
             return node;
         }
+
+        if (check(TokenType::LBRACKET)) {
+            advance();
+            auto node = std::make_unique<IndexExprNode>();
+            node->kind = NodeType::IndexExpr;
+            node->varName = name;
+            node->index = parseExpression();
+            expect(TokenType::RBRACKET, "]");
+            return node;
+        }
+
         auto node = std::make_unique<IdentifierNode>();
         node->kind = NodeType::Identifier;
         node->name = name;
         return node;
     }
+
     // Grouped expression: (expr)
     if (match(TokenType::LPAREN)) {
         auto expr = parseExpression();
@@ -250,10 +332,97 @@ NodePtr Parser::parsePrimary() {
 }
 
 std::string Parser::parseTypeName() {
+    if (check(TokenType::KW_HEAP)) {
+        advance(); // consume heap
+        expect(TokenType::LT, "<");
+        std::string inner = parseTypeName();
+        expect(TokenType::GT, ">");
+        return "heap<" + inner + ">";
+    }
     if (check(TokenType::TYPE_INT))    { advance(); return "int"; }
     if (check(TokenType::TYPE_FLOAT))  { advance(); return "float"; }
     if (check(TokenType::TYPE_STRING)) { advance(); return "string"; }
     if (check(TokenType::TYPE_BOOL))   { advance(); return "bool"; }
     if (check(TokenType::IDENT))       { return advance().value; }
     throw std::runtime_error("Expected type name, got '" + peek().value + "'");
+}
+
+NodePtr Parser::parseHeapAlloc() {
+    auto node = std::make_unique<HeapAllocExprNode>();
+    node->kind = NodeType::HeapAllocExpr;
+    node->line = peek().line;
+    expect(TokenType::KW_HEAP_ALLOC, "heap_alloc");
+    expect(TokenType::LPAREN, "(");
+    node->size = parseExpression();
+    expect(TokenType::RPAREN, ")");
+    return node;
+}
+
+NodePtr Parser::parseFreeStmt() {
+    auto node = std::make_unique<FreeStmtNode>();
+    node->kind = NodeType::FreeStmt;
+    node->line = peek().line;
+    expect(TokenType::KW_FREE, "free");
+    expect(TokenType::LPAREN, "(");
+    node->varName = expect(TokenType::IDENT, "variable name").value;
+    expect(TokenType::RPAREN, ")");
+    expect(TokenType::SEMICOLON, ";");
+    return node;
+}
+
+NodePtr Parser::parseGoStmt() {
+    auto node = std::make_unique<GoStmtNode>();
+    node->kind = NodeType::GoStmt;
+    node->line = peek().line;
+    expect(TokenType::KW_GO, "go");
+    node->funcName = expect(TokenType::IDENT, "function name").value;
+    expect(TokenType::LPAREN, "(");
+    while (!check(TokenType::RPAREN) && !isAtEnd()) {
+        node->args.push_back(parseExpression());
+        if (!check(TokenType::RPAREN)) expect(TokenType::COMMA, ",");
+    }
+    expect(TokenType::RPAREN, ")");
+    expect(TokenType::SEMICOLON, ";");
+    return node;
+}
+
+NodePtr Parser::parseChanDecl() {
+    auto node = std::make_unique<ChanDeclNode>();
+    node->kind = NodeType::ChanDecl;
+    node->line = peek().line;
+    expect(TokenType::KW_CHAN, "chan");
+    expect(TokenType::LT, "<");
+    node->elementType = parseTypeName();
+    expect(TokenType::GT, ">");
+    node->name = expect(TokenType::IDENT, "channel name").value;
+    expect(TokenType::SEMICOLON, ";");
+    return node;
+}
+
+NodePtr Parser::parseChanSend(const std::string& name) {
+    auto node = std::make_unique<ChanSendNode>();
+    node->kind = NodeType::ChanSend;
+    node->line = peek().line;
+    node->chanName = name;
+    expect(TokenType::LPAREN, "(");
+    node->value = parseExpression();
+    expect(TokenType::RPAREN, ")");
+    expect(TokenType::SEMICOLON, ";");
+    return node;
+}
+
+NodePtr Parser::parseChanRecvExpr(const std::string& name) {
+    auto node = std::make_unique<ChanRecvNode>();
+    node->kind = NodeType::ChanRecv;
+    node->line = peek().line;
+    node->chanName = name;
+    expect(TokenType::LPAREN, "(");
+    expect(TokenType::RPAREN, ")");
+    return node;
+}
+
+NodePtr Parser::parseChanRecv(const std::string& name) {
+    auto node = parseChanRecvExpr(name);
+    expect(TokenType::SEMICOLON, ";");
+    return node;
 }

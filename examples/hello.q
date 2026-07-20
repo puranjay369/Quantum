@@ -1,19 +1,22 @@
-fn multiply(a: int, b: int) -> int {
-    return a * b;
+chan<int> numbers;
+
+fn producer() {
+    numbers.send(1);
+    numbers.send(2);
+    numbers.send(3);
+}
+
+fn consumer() {
+    let a: int = numbers.recv();
+    let b: int = numbers.recv();
+    let c: int = numbers.recv();
+    print(a);
+    print(b);
+    print(c);
 }
 
 fn main() {
-    let x: int = 6;
-    let y: int = 7;
-    let z: int = 1844;
-    
-    let str1: string = "Hello World";
-
-    let result: int = multiply(x, y);
-    
-    print(result);
-    print(str1);
-    print(y);
-
-    
+    go producer();
+    go consumer();
+    wait_all();
 }

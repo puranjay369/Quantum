@@ -2,6 +2,7 @@
 #include <string>
 #include <sstream>
 #include "../parser/ast.h"
+#include "../semantic/type_checker.h"
 
 // CodeGen (C-Emitter Bridge)
 // Walks the fully parsed AST and emits valid, equivalent C code.
@@ -14,6 +15,10 @@ private:
     std::ostringstream out;  // Accumulates generated C code
     int indentLevel = 0;
 
+    TypeChecker* typeChecker = nullptr;
+
+    bool inSecureContext = false;
+
     void emit(const std::string& s);    // Write a line with indentation
     void emitRaw(const std::string& s); // Write without newline (for expressions)
 
@@ -25,7 +30,17 @@ private:
     void genVarDecl(VarDeclNode* node);
     void genReturn(ReturnStmtNode* node);
     void genIf(IfStmtNode* node);
+    void genFor(ForStmtNode* node);
+    void genWhile(WhileStmtNode* node);
+    void genAssign(AssignStmtNode* node);
     void genFunctionCall(FunctionCallNode* node);
+    void genFree(FreeStmtNode* node);
+    void genChanDecl(ChanDeclNode* node);
+    void genChanSend(ChanSendNode* node);
+    
+    void genGo(GoStmtNode* node);
+    int threadCounter = 0; // unique thread variable names
+    std::vector<std::string> spawnedThreads; // track thread var names per function
     
     std::string genExpr(ASTNode* node);              // Returns C expression as a string
     std::string buildPrintf(FunctionCallNode* node); // Converts print() -> printf()
