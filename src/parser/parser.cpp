@@ -243,6 +243,21 @@ NodePtr Parser::parseMulDiv() {
 }
 
 NodePtr Parser::parsePrimary() {
+    // // this part is brute force added for testing negative numbers, but it should be handled in a more elegant way   
+    // if (check(TokenType::MINUS)) {
+    //     advance();
+    //     auto operand = parsePrimary();
+    //     auto zero = std::make_unique<IntLiteralNode>();
+    //     zero->kind = NodeType::IntLiteral;
+    //     zero->value = 0;
+    //     auto node = std::make_unique<BinOpNode>();
+    //     node->kind = NodeType::BinOp;
+    //     node->op = "-";
+    //     node->left = std::move(zero);
+    //     node->right = std::move(operand);
+    //     return node;
+    // }
+
     // Integer literal
     if (check(TokenType::INT_LITERAL)) {
         auto node = std::make_unique<IntLiteralNode>();

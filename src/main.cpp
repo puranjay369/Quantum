@@ -5,6 +5,7 @@
 #include "lexer/lexer.h"
 #include "parser/parser.h"
 #include "codegen/codegen.h"
+#include "codegen/asmgen.h"
 #include "semantic/type_checker.h"
 #include "security/secure_checker.h"
 
@@ -128,6 +129,8 @@ int main(int argc, char* argv[]) {
     TypeChecker typeChecker;
     typeChecker.check(ast.get());
 
+    
+   
     // for (auto& tok : tokens) {
     //     std::cout << "[" << tokenTypeName(tok.type) << "] "
     //               << "\"" << tok.value << "\""
@@ -136,7 +139,7 @@ int main(int argc, char* argv[]) {
 
     SecureChecker secureChecker;
     secureChecker.check(ast.get());
-
+    /*
     // Generate C code
     CodeGen codegen;
     std::string cCode = codegen.generate(ast.get());
@@ -145,11 +148,25 @@ int main(int argc, char* argv[]) {
     std::ofstream cFile("output.c");
     cFile << cCode;
     cFile.close();
-
+    
     // Compile with gcc
-    int result = system("gcc output.c channel_api.o -o output -lm -lpthread");
+    // int result = system("gcc output.c -o output -lm");
+   
+    */
+
+    // Generate Assembly code
+    AsmGen asmgen;
+    std::string asmCode = asmgen.generate(static_cast<ProgramNode*>(ast.get()));
+
+    std::ofstream asmFile("output.s");
+    asmFile << asmCode;
+    asmFile.close();
+    system("as output.s -o output.o");
+    int result = system("ld output.o -o output");
+
+
     if (result != 0) {
-        std::cerr << "gcc compilation failed\n";
+        std::cerr << "link failed\n";
         return 1;
     }
 
