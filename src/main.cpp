@@ -5,6 +5,7 @@
 #include "lexer/lexer.h"
 #include "parser/parser.h"
 #include "codegen/codegen.h"
+#include "codegen/asmgen.h"
 #include "semantic/type_checker.h"
 
 std::string tokenTypeName(TokenType t) {
@@ -127,12 +128,8 @@ int main(int argc, char* argv[]) {
     TypeChecker typeChecker;
     typeChecker.check(ast.get());
 
-    // for (auto& tok : tokens) {
-    //     std::cout << "[" << tokenTypeName(tok.type) << "] "
-    //               << "\"" << tok.value << "\""
-    //               << " (line " << tok.line << ", col " << tok.col << ")\n";
-    // }
-
+    /*
+   
     // Generate C code
     CodeGen codegen;
     std::string cCode = codegen.generate(ast.get());
@@ -141,11 +138,23 @@ int main(int argc, char* argv[]) {
     std::ofstream cFile("output.c");
     cFile << cCode;
     cFile.close();
+   
+    */
+
+    // Generate Assembly code
+    AsmGen asmgen;
+    std::string asmCode = asmgen.generate(static_cast<ProgramNode*>(ast.get()));
+
+    std::ofstream asmFile("output.s");
+    asmFile << asmCode;
+    asmFile.close();
+    system("as output.s -o output.o");
+    int result = system("ld output.o -o output");
 
     // Compile with gcc
-    int result = system("gcc output.c -o output -lm");
+    // int result = system("gcc output.c -o output -lm");
     if (result != 0) {
-        std::cerr << "gcc compilation failed\n";
+        std::cerr << "link failed\n";
         return 1;
     }
 

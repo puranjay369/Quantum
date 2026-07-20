@@ -8,11 +8,11 @@ char Lexer::peek() {
     if (isAtEnd()) return '\0';
     return source[pos];
 }
-
 char Lexer::peeknext() {
     if(pos + 1 >= source.size()) return '\0';
-    return source[pos];
+    return source[pos + 1];
 }
+
 
 char Lexer::advance() {
     char c = source[pos++];
