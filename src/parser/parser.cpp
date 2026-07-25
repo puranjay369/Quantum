@@ -230,16 +230,28 @@ NodePtr Parser::parseAddSub() {
 }
 
 NodePtr Parser::parseMulDiv() {
-    auto left = parsePrimary();
+    auto left = parseUnary();  // CHANGED from parsePrimary
     while (check(TokenType::STAR) || check(TokenType::SLASH)) {
         auto node = std::make_unique<BinOpNode>();
         node->kind = NodeType::BinOp;
         node->op   = advance().value;
         node->left = std::move(left);
-        node->right = parsePrimary();
+        node->right = parseUnary(); // CHANGED
         left = std::move(node);
     }
     return left;
+}
+
+NodePtr Parser::parseUnary() {
+    if (check(TokenType::MINUS) || check(TokenType::NOT)) {
+        auto node = std::make_unique<UnaryOpNode>();
+        node->kind = NodeType::UnaryOp;
+        node->line = peek().line;
+        node->op = advance().value;
+        node->operand = parseUnary(); // right-associative
+        return node;
+    }
+    return parsePrimary();
 }
 
 NodePtr Parser::parsePrimary() {
@@ -257,6 +269,22 @@ NodePtr Parser::parsePrimary() {
     //     node->right = std::move(operand);
     //     return node;
     // }
+
+    if (check(TokenType::KW_TRUE)) {
+        advance();
+        auto node = std::make_unique<BoolLiteralNode>();
+        node->kind = NodeType::BoolLiteral;
+        node->value = true;
+        return node;
+    }
+
+    if (check(TokenType::KW_FALSE)) {
+        advance();
+        auto node = std::make_unique<BoolLiteralNode>();
+        node->kind = NodeType::BoolLiteral;
+        node->value = false;
+        return node;    
+    }
 
     // Integer literal
     if (check(TokenType::INT_LITERAL)) {
@@ -290,7 +318,7 @@ NodePtr Parser::parsePrimary() {
             advance(); // consume .
             std::string method = expect(TokenType::IDENT, "method name").value;
             if (method == "recv") return parseChanRecvExpr(name);
-            throw std::runtime_error("Channel send is only valid as a statement");
+            throw std::runtime_error("Unknown method '" + method + "' on '" + name + "'");
         }
 
         if (match(TokenType::LPAREN)) {
@@ -343,6 +371,7 @@ std::string Parser::parseTypeName() {
     if (check(TokenType::TYPE_FLOAT))  { advance(); return "float"; }
     if (check(TokenType::TYPE_STRING)) { advance(); return "string"; }
     if (check(TokenType::TYPE_BOOL))   { advance(); return "bool"; }
+    if (check(TokenType::TYPE_DOUBLE)) { advance(); return "double"; }
     if (check(TokenType::IDENT))       { return advance().value; }
     throw std::runtime_error("Expected type name, got '" + peek().value + "'");
 }
