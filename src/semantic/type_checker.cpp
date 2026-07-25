@@ -101,9 +101,9 @@ void TypeChecker::checkStatement(ASTNode* node) {
 void TypeChecker::checkVarDecl(VarDeclNode* node) {
     std::string exprType = checkExpr(node->initializer.get());
 
-    // for heap types skip the strict equality check
     if (node->type.substr(0, 5) != "heap<") {
-        if (exprType != node->type) {
+        bool widensToDouble = (node->type == "double" && exprType == "float");
+        if (exprType != node->type && !widensToDouble) {
             throw std::runtime_error("Type Error: Cannot assign type '" + exprType +
                                      "' to variable '" + node->name + "' of type '" + node->type + "'.");
         }
@@ -197,6 +197,12 @@ std::string TypeChecker::checkExpr(ASTNode* node) {
         
         case NodeType::ChanRecv:
             return checkChanRecv(static_cast<ChanRecvNode*>(node));
+        
+        case NodeType::BoolLiteral: 
+            return "bool";
+
+        case NodeType::UnaryOp:
+            return checkUnaryOp(static_cast<UnaryOpNode*>(node)); 
 
         default:
             throw std::runtime_error("Type Error: Unknown expression type.");
@@ -332,4 +338,23 @@ std::string TypeChecker::checkChanRecv(ChanRecvNode* node) {
     std::string elemType = info.type.substr(5, info.type.size() - 6);
     node->resolvedType = elemType;
     return elemType;
+}
+
+std::string TypeChecker::checkUnaryOp(UnaryOpNode* node) {
+    std::string type = checkExpr(node->operand.get());
+    if (node->op == "-") {
+        if (type != "int" && type != "float" && type != "double") {
+            throw std::runtime_error("Type Error: unary '-' requires numeric type, got '" + type + "'.");
+        }
+        node->resolvedType = type;
+        return type;
+    }
+    if (node->op == "!") {
+        if (type != "bool") {
+            throw std::runtime_error("Type Error: unary '!' requires bool, got '" + type + "'.");
+        }
+        node->resolvedType = "bool";
+        return "bool";
+    }
+    throw std::runtime_error("Type Error: unknown unary operator '" + node->op + "'.");
 }

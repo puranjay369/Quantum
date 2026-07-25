@@ -41,4 +41,5 @@ private:
     std::string checkBinOp(BinOpNode* node);
     std::string checkFunctionCall(FunctionCallNode* node);
     std::string checkChanRecv(ChanRecvNode* node);
+    std::string checkUnaryOp(UnaryOpNode* node);
 };

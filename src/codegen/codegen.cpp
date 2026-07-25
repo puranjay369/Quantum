@@ -25,7 +25,8 @@ std::string CodeGen::generate(ProgramNode* program) {
 
 std::string CodeGen::mapType(const std::string& qtype) {
     if (qtype == "int")    return "int";
-    if (qtype == "float")  return "double";
+    if (qtype == "float")  return "float";
+    if (qtype == "double") return "double";
     if (qtype == "string") return "char*";
     if (qtype == "bool")   return "int";
     if (qtype == "void")   return "void";
@@ -33,12 +34,14 @@ std::string CodeGen::mapType(const std::string& qtype) {
 }
 
 void CodeGen::genProgram(ProgramNode* node) {
+    hasGlobals = !node->globals.empty();
+
     for (auto& decl : node->globals) {
         auto* ch = static_cast<ChanDeclNode*>(decl.get());
         out << "Channel " << ch->name << ";\n";    
     }
 
-    if (!node->globals.empty()) {
+    if (hasGlobals) {
        out << "\nstatic void __q_init_globals(void) {\n";
         indentLevel++;
         for (auto& decl : node->globals) {
@@ -76,7 +79,9 @@ void CodeGen::genFunction(FunctionDefNode* node) {
         if (node->body->kind != NodeType::Block) {
             throw std::runtime_error("CodeGen: main body must be a block");
         }
-        emit("__q_init_globals();");
+        if (hasGlobals) {
+            emit("__q_init_globals();");
+        }
         auto* block = static_cast<BlockNode*>(node->body.get());
         for (auto& stmt : block->statements) {
             genStatement(stmt.get());
@@ -276,6 +281,17 @@ std::string CodeGen::genExpr(ASTNode* node) {
             return "channel_recv(&" + n->chanName + ")";
         }
 
+        case NodeType::BoolLiteral:
+            return static_cast<BoolLiteralNode*>(node)->value ? "1" : "0";
+
+        case NodeType::UnaryOp: {
+            auto* n = static_cast<UnaryOpNode*>(node);
+            std::string operand = genExpr(n->operand.get());
+            if (n->op == "-") return "(-" + operand + ")";
+            if (n->op == "!") return "(!" + operand + ")";
+            throw std::runtime_error("CodeGen: unknown unary operator");
+        }
+
         default:
             throw std::runtime_error("CodeGen: unknown expression node");
     }
@@ -318,15 +334,15 @@ std::string CodeGen::buildPrintf(FunctionCallNode* node) {
         fmt = "%d";
     } else if (arg->kind == NodeType::FloatLiteral) {
         fmt = "%f";
+    } else if (arg->kind == NodeType::BoolLiteral) {
+        fmt = "%d";
     } else if (arg->kind == NodeType::StringLiteral) {
         fmt = "%s";
     } else if (arg->kind == NodeType::Identifier) {
         std::string type = static_cast<IdentifierNode*>(arg)->resolvedType;
-        if (type == "float")       fmt = "%f";
-        else if (type == "string") fmt = "%s";
-        else                       fmt = "%d";
-    } else {
-        fmt = "%d";
+        if (type == "float" || type == "double") fmt = "%f";
+        else if (type == "string")               fmt = "%s";
+        else                                      fmt = "%d";
     }
 
     return "printf(\"" + fmt + "\\n\", " + val + ")";

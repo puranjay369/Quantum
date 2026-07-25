@@ -22,9 +22,13 @@ enum class TokenType {
     KW_SECURE,
     KW_HEAP_ALLOC,
     KW_CHAN,
+    KW_TRUE,
+    KW_FALSE,   
+    NOT,
 
     TYPE_INT,
     TYPE_FLOAT,
+    TYPE_DOUBLE,
     TYPE_STRING,
     TYPE_BOOL,
     TYPE_HEAP, 

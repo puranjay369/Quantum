@@ -40,6 +40,7 @@ private:
     NodePtr                          parseIndexExpr(const std::string& name); // parses arr[i]
     NodePtr                          parseGoStmt();
     NodePtr                          parseChanDecl();
+    NodePtr                          parseUnary();
     NodePtr                          parseChanSend(const std::string& name);
     NodePtr                          parseChanRecv(const std::string& name);
     NodePtr                          parseChanRecvExpr(const std::string& name);

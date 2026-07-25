@@ -85,6 +85,9 @@ TokenType Lexer::keywordOrIdent(const std::string& word){
         {"bool",    TokenType::TYPE_BOOL},
         {"heap_alloc", TokenType::KW_HEAP_ALLOC},
         {"chan",    TokenType::KW_CHAN},
+        {"true",    TokenType::KW_TRUE},
+        {"false",   TokenType::KW_FALSE},
+        {"double",  TokenType::TYPE_DOUBLE}
     };
     auto it = keywords.find(word);
     return (it != keywords.end()) ? it->second : TokenType::IDENT;
@@ -138,9 +141,9 @@ std::vector<Token> Lexer::tokenize() {
                 else               {            tokens.emplace_back(TokenType::ASSIGN,  "=",  startLine, startCol); }
                 break;
             case '!':
-                if (peek() == '=') { advance(); tokens.emplace_back(TokenType::NEQ,    "!=", startLine, startCol); }
-                else               {            tokens.emplace_back(TokenType::UNKNOWN, "!",  startLine, startCol); }
-                break;
+                if (peek() == '=') { advance(); tokens.emplace_back(TokenType::NEQ, "!=", startLine, startCol); }
+                else               {            tokens.emplace_back(TokenType::NOT, "!",  startLine, startCol); }
+            break;
             case '<':
                 if (peek() == '=') { advance(); tokens.emplace_back(TokenType::LTE,    "<=", startLine, startCol); }
                 else               {            tokens.emplace_back(TokenType::LT,      "<",  startLine, startCol); }

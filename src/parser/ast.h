@@ -8,6 +8,7 @@ enum class NodeType {
     VarDecl, ReturnStmt, IfStmt,
     ForStmt, WhileStmt, AssignStmt, 
     BinOp, IntLiteral, FloatLiteral,
+    UnaryOp,BoolLiteral,
     HeapAllocExpr,FreeStmt,IndexExpr,
     GoStmt,
     ChanDecl,ChanSend,ChanRecv,
@@ -135,5 +136,15 @@ struct ChanSendNode : ASTNode {
 
 struct ChanRecvNode : ASTNode {
     std::string chanName;
+    std::string resolvedType;
+};
+
+struct BoolLiteralNode : ASTNode {
+    bool value;
+};
+
+struct UnaryOpNode : ASTNode {
+    std::string op; // "-" or "!"
+    NodePtr operand;
     std::string resolvedType;
 };

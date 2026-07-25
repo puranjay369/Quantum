@@ -19,6 +19,8 @@ private:
 
     bool inSecureContext = false;
 
+    bool hasGlobals = false;
+
     void emit(const std::string& s);    // Write a line with indentation
     void emitRaw(const std::string& s); // Write without newline (for expressions)
 

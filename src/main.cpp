@@ -139,7 +139,7 @@ int main(int argc, char* argv[]) {
 
     SecureChecker secureChecker;
     secureChecker.check(ast.get());
-    /*
+
     // Generate C code
     CodeGen codegen;
     std::string cCode = codegen.generate(ast.get());
@@ -150,27 +150,33 @@ int main(int argc, char* argv[]) {
     cFile.close();
     
     // Compile with gcc
-    // int result = system("gcc output.c -o output -lm");
-   
-    */
-
-    // Generate Assembly code
-    AsmGen asmgen;
-    std::string asmCode = asmgen.generate(static_cast<ProgramNode*>(ast.get()));
-
-    std::ofstream asmFile("output.s");
-    asmFile << asmCode;
-    asmFile.close();
-    system("as output.s -o output.o");
-    int result = system("ld output.o -o output");
-
-
+    int result = system("gcc output.c runtime/concurrency/channel_api.c -o output -lm -lpthread");
+    
     if (result != 0) {
-        std::cerr << "link failed\n";
+        std::cerr << "gcc compilation failed\n";
         return 1;
     }
 
     std::cout << "Compiled successfully → ./output\n";
+   
+
+    // Generate Assembly code
+    // AsmGen asmgen;
+    // std::string asmCode = asmgen.generate(static_cast<ProgramNode*>(ast.get()));
+
+    // std::ofstream asmFile("output.s");
+    // asmFile << asmCode;
+    // asmFile.close();
+    // system("as output.s -o output.o");
+    // int result = system("ld output.o -o output");
+
+
+    // if (result != 0) {
+    //     std::cerr << "link failed\n";
+    //     return 1;
+    // }
+
+    // std::cout << "Compiled successfully → ./output\n";
 
     return 0;
 }
